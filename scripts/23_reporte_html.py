@@ -184,7 +184,11 @@ def seccion_validacion():
     if el:
         v1 = el.get("metricas_v1_default(cp0,flow0.4)", {})
         lo = el.get("metricas_loeo_media", {})
-        s.append(f"<p>Como tenemos la imagen de núcleos del mismo instante, una célula bien detectada en brightfield debería contener exactamente un núcleo. Contando células con un núcleo (aciertos), sin núcleo (detecciones falsas), con dos o más núcleos (células fusionadas) y núcleos sin célula (células perdidas), la segmentación alcanza un <b>F1 de {f(lo.get('f1'), 3)}</b> (precisión {f(lo.get('precision'), 3)}, recall {f(lo.get('recall'), 3)}), evaluado en videos que no se usaron para elegir los umbrales. Con los umbrales de la versión anterior el F1 era {f(v1.get('f1'), 3)}. Los umbrales elegidos son <span class=\"mono\">cellprob = {el['cellprob_threshold']:g}</span> y <span class=\"mono\">flow = {el['flow_threshold']:g}</span>.</p>")
+        el_m = el.get("metricas_elegida_por_pelicula_media", {})
+        mx = el.get("maximo_f1", {})
+        s.append(f"<p>Como tenemos la imagen de núcleos del mismo instante, una célula bien detectada en brightfield debería contener exactamente un núcleo. Contamos células con un núcleo (aciertos), sin núcleo (detecciones falsas), con dos o más núcleos (células fusionadas) y núcleos sin célula (células perdidas). Con los umbrales elegidos la segmentación alcanza un <b>F1 de {f(el_m.get('f1'), 3)}</b>, con precisión {f(el_m.get('precision'), 3)} y recall {f(el_m.get('recall'), 3)} (promedio de los 16 videos, con desvío de ±{f(el.get('metricas_loeo_sd', {}).get('f1'), 3)} entre videos).</p>")
+        if mx and (mx.get("cellprob"), mx.get("flow")) != (el["cellprob_threshold"], el["flow_threshold"]):
+            s.append(f"<p>La combinación con el F1 más alto (<span class=\"mono\">cellprob = {mx['cellprob']:g}, flow = {mx['flow']:g}</span>, F1 = {f(mx['f1'], 4)}) quedó empatada con los umbrales por defecto (F1 = {f(el_m.get('f1'), 4)}): la diferencia es menor que una décima de la variación entre videos. Entre opciones empatadas elegimos la de <b>mayor precisión</b> ({f(el_m.get('precision'), 2)} contra {f(mx['precision'], 2)}), porque produce la mitad de detecciones falsas. Para medir movimiento, un objeto falso es peor que una célula no detectada: genera una trayectoria inventada, mientras que la célula perdida solo reduce un poco la muestra. Resultado: se mantienen los umbrales por defecto de Cellpose (<span class=\"mono\">cellprob = {el['cellprob_threshold']:g}, flow = {el['flow_threshold']:g}</span>), ahora con evidencia de que son los adecuados.</p>")
     s.append("</div>")
     s.append(figura("figuras/val_segmentacion_bf.png",
                     "<b>Segmentación brightfield comparada con los núcleos.</b> Izquierda: F1 promedio de los 16 videos para cada combinación de umbrales. Centro: cada punto es un video, con los umbrales anteriores (naranja) y los elegidos (azul). Derecha: cantidad de cada tipo de error."))
@@ -196,7 +200,7 @@ def seccion_validacion():
     s.append('<h3>Segmentación de CAMAD comparada con dibujos hechos a mano</h3><div class="texto">')
     if g is not None:
         full = g[(g.escala == 1)].groupby("exp").recall.mean().mean()
-        s.append(f"<p>CAMAD trae 96 imágenes en las que un experto dibujó el contorno de las células aisladas. Con las imágenes a resolución completa (como hacía la versión anterior), Cellpose encontraba el <b>{f(100 * full, 0)}%</b> de esas células. La causa es la escala: a 0.117 µm por píxel una célula mide 150–400 píxeles, mucho más de lo que el modelo espera. Reduciendo cada imagen 4 veces por lado, el recall sube al <b>{f(100 * ea.get('recall', np.nan), 0)}%</b>, con una superposición media (IoU) de {f(ea.get('iou_medio'), 2)} entre el contorno detectado y el dibujado. Además cada video se procesa unas 10 veces más rápido.</p>")
+        s.append(f"<p>CAMAD trae 96 imágenes en las que un experto dibujó el contorno de las células aisladas. Con las imágenes a resolución completa (como hacía la versión anterior), Cellpose encontraba el <b>{f(100 * full, 0)}%</b> de esas células. La causa es la escala: a 0.117 µm por píxel una célula mide 150–400 píxeles, mucho más de lo que el modelo espera. Reduciendo cada imagen 4 veces por lado, el recall sube al <b>{f(100 * ea.get('recall', np.nan), 0)}%</b>, con una superposición media (IoU) de {f(ea.get('iou_medio'), 2)} entre el contorno detectado y el dibujado. Además cada video se procesa unas 10 veces más rápido. Si la configuración se elige dejando afuera cada experimento y se evalúa en ese experimento (una estimación más exigente), el recall es {f(100 * js('validacion_seg_camad', 'eleccion.json').get('metricas_loeo_media', {}).get('recall', np.nan), 0)}%. Los experimentos más difíciles son el 11 (Matrigel) y el 12 (colágeno), con muchas células fuera de foco.</p>")
     s.append("</div>")
     s.append(figura("figuras/val_segmentacion_camad.png",
                     "<b>CAMAD: calidad de la segmentación.</b> Izquierda: recall y superposición según cuánto se reduce la imagen. Centro: recall por experimento con la configuración elegida, agrupado por sustrato. Derecha: cada punto es un experimento, versión anterior contra versión nueva."))
@@ -443,6 +447,41 @@ def seccion_whad():
     return "\n".join(s)
 
 
+def seccion_rendimiento():
+    r = js("rendimiento", "rendimiento.json")
+    if not r:
+        return ""
+    t = {x["imagen"]: x for x in r["tabla"]}
+    bf, sm = t["1024x1022 (BF)"], t["512x511"]
+    ca = t["642x478 (CAMAD 4x)"]
+    M = r["medido"]
+    seg = lambda x: f"{f(x, 1)} s" if x < 90 else (f"{f(x / 60, 1)} min" if x < 5400 else f"{f(x / 3600, 1)} h")
+    s = ['<div class="texto">']
+    s.append(f"<p>Casi todo el tiempo se va en la segmentación con Cellpose-SAM, que es un modelo grande (un <i>vision transformer</i> de unos 300 millones de parámetros). Contamos las operaciones que realiza: {f(M['gflop_por_tile_256'], 0)} mil millones de operaciones (GFLOP) por cada bloque de 256 × 256 píxeles, es decir, unos <b>{f(bf['tflop_por_imagen'], 1)} billones de operaciones (TFLOP) por imagen</b> de 1024 × 1022 píxeles. En comparación, detectar el contorno de cada célula, unirla con la imagen anterior y medirla tarda {f(bf['otros_pasos_pc_s'], 2)} s por imagen, y las estadísticas de un video completo unos {f(M['estadistica_s_por_pelicula'], 0)} s.</p>")
+    s.append("</div>")
+    filas = []
+    for nombre, x, n in (("Imagen brightfield (1024 × 1022)", bf, 1600), ("Imagen CAMAD reducida (642 × 478)", ca, 9438),
+                         ("Imagen reducida a 512 × 511", sm, None)):
+        filas.append({"a": nombre, "g": seg(x["pc_gpu_fp16_s"] + x["otros_pasos_pc_s"]),
+                      "c": seg(x["pc_cpu_4hilos_s"] + x["otros_pasos_pc_s"]),
+                      "p": f"{seg(x['pi5_s'])} ({seg(x['pi5_s_min'])} – {seg(x['pi5_s_max'])})",
+                      "tot": (f"{seg(n * (x['pc_gpu_fp16_s'] + x['otros_pasos_pc_s']))} / {seg(n * (x['pi5_s']))}" if n else "–")})
+    s.append(tabla(pd.DataFrame(filas), ["a", "g", "c", "p", "tot"],
+                   ["Por imagen", "PC con GPU (RX 6800 XT)", "PC solo CPU (4 hilos)", "Raspberry Pi 5, 8 GB (estimado)",
+                    "Dataset completo: PC GPU / Pi 5"], num=("g", "c", "p", "tot")))
+    s.append(figura("figuras/rendimiento.png",
+                    "<b>Tiempo por imagen contra el intervalo entre fotos</b> (escala logarítmica). Para que el análisis pueda hacerse durante la adquisición, la barra tiene que quedar a la izquierda de la línea del intervalo correspondiente. Las barras de la Pi 5 muestran el rango de la estimación."))
+    s.append('<div class="texto">')
+    s.append(f"<p><b>Cómo se estimó la Raspberry Pi 5.</b> No la medimos directamente. Su procesador (4 núcleos Cortex-A76 a 2.4 GHz) rinde 30.2 GFLOPS en el benchmark Linpack (medición publicada por J. Geerling). En nuestra PC, Cellpose aprovecha el {f(100 * r['eficiencia_cellpose_vs_matmul'], 0)}% de la capacidad de cálculo pura del procesador; aplicando la misma proporción a la Pi quedan unos {f(r['pi5_gflops_efectivos']['central'], 0)} GFLOPS efectivos (rango 12–25). El modelo cabe en los 8 GB de memoria (ocupa 1.2 GB), pero la Pi necesita un disipador activo para sostener esa carga sin bajar su frecuencia.</p>")
+    s.append(f"<p><b>¿Se puede analizar en la Pi entre foto y foto?</b> Con Cellpose-SAM, <b>no</b>. Una imagen de 1 megapíxel tardaría unos {seg(bf['pi5_s'])}, más que el intervalo de 5 minutos del dataset brightfield y mucho más que los 30 segundos de CAMAD. Aun reduciendo la imagen a 512 × 512, harían falta unos {seg(sm['pi5_s'])} por imagen. Los pasos posteriores (contornos, seguimiento, estadística) sí serían viables en la Pi, porque tardan menos de un segundo por imagen.</p>")
+    s.append(f"<p><b>Alternativas factibles:</b></p><ul>"
+             f"<li><b>Que la Pi solo adquiera y envíe cada imagen a la PC por la red.</b> Una imagen de 2 MB tarda una fracción de segundo por cable, y la PC la procesa en {seg(bf['pc_gpu_fp16_s'] + bf['otros_pasos_pc_s'])}, así que el análisis podría ir en tiempo real incluso con intervalos de 30 s. Es la opción recomendada.</li>"
+             f"<li><b>Procesar todo al terminar el experimento</b> en la PC: los 1600 cuadros de brightfield tardan unos {seg(1600 * (bf['pc_gpu_fp16_s'] + bf['otros_pasos_pc_s']))} con la GPU. En la Pi tardarían unos {f(1600 * bf['pi5_s'] / 86400, 0)} días.</li>"
+             f"<li><b>Usar un modelo más liviano en la Pi</b>, como Cellpose 3 (una red U-Net unas 50–100 veces más barata), o un acelerador de IA para la Pi 5 (AI HAT+). Serían del orden de segundos por imagen, pero habría que volver a validar la calidad de la segmentación con las mismas referencias de este reporte, y convertir el modelo al formato del acelerador no es trivial.</li></ul>")
+    s.append("</div>")
+    return "\n".join(s)
+
+
 LIMITACIONES = """
 <ul>
 <li><b>Una sola condición en el dataset principal.</b> Los 16 videos brightfield son de la misma línea celular y la misma condición, así que no permiten comparar tratamientos. Podrían provenir del mismo día o de la misma placa. Verificamos que no son continuaciones unos de otros.</li>
@@ -549,7 +588,7 @@ def main():
         "FECHA": fecha, "HALLAZGOS": hallazgos(vbf, vca), "TARJETAS_DATOS": tarjetas_datos(),
         "VALIDACION": seccion_validacion(), "SIMULACIONES": seccion_simulaciones(),
         "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "RESULTADOS_CAMAD": seccion_camad(vca),
-        "RESULTADOS_WHAD": seccion_whad(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
+        "RESULTADOS_WHAD": seccion_whad(), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
         "TECNICO": seccion_tecnico(vbf, vca),
     }
     for k, v in rep.items():

@@ -56,28 +56,38 @@ def fig_val_seg_bf():
     axs[0].grid(False)
     fig.colorbar(im, ax=axs[0], fraction=0.046)
     # por película: default vs elegido
-    agg = g.groupby(["cellprob", "flow", "movie"])[["tp", "fp", "fn", "fusiones", "n_nucleos"]].sum().reset_index()
+    agg = g.groupby(["cellprob", "flow", "movie"])[["tp", "fp", "fn", "fusiones", "n_nucleos",
+                                                    "nucleos_sin_celula"]].sum().reset_index()
     agg["f1"] = 2 * agg.tp / (2 * agg.tp + agg.fp + agg.fusiones + agg.fn)
     agg["precision"] = agg.tp / (agg.tp + agg.fp + agg.fusiones)
     agg["recall"] = agg.tp / agg.n_nucleos
-    a = agg[(agg.cellprob == 0) & (agg.flow == 0.4)].set_index("movie")
-    b = agg[(agg.cellprob == el["cellprob_threshold"]) & (agg.flow == el["flow_threshold"])].set_index("movie")
+    # comparación: umbrales elegidos vs la alternativa relevante (si lo elegido
+    # son los de por defecto, se compara contra el máximo F1 que empató)
+    ce, fe = el["cellprob_threshold"], el["flow_threshold"]
+    if (ce, fe) == (0.0, 0.4) and "maximo_f1" in el:
+        ca, fa = el["maximo_f1"]["cellprob"], el["maximo_f1"]["flow"]
+        lab_a, lab_b = f"máximo F1 ({ca:g}, {fa:g})", "elegido = por defecto (0, 0.4)"
+    else:
+        ca, fa = 0.0, 0.4
+        lab_a, lab_b = "v1 (0, 0.4)", f"elegido ({ce:g}, {fe:g})"
+    a = agg[(agg.cellprob == ca) & (agg.flow == fa)].set_index("movie")
+    b = agg[(agg.cellprob == ce) & (agg.flow == fe)].set_index("movie")
     for k, met in enumerate(["f1", "precision", "recall"]):
         axs[1].plot([k - 0.15, k + 0.15], np.vstack([a[met], b[met]]), color=S.NEUTRO, lw=0.7, alpha=0.7)
         axs[1].scatter(np.full(len(a), k - 0.15), a[met], color=S.CAT[1], s=16, zorder=3,
-                       label="v1 (0, 0.4)" if k == 0 else None)
+                       label=lab_a if k == 0 else None)
         axs[1].scatter(np.full(len(b), k + 0.15), b[met], color=S.CAT[0], s=16, zorder=3,
-                       label=f"elegido ({el['cellprob_threshold']:g}, {el['flow_threshold']:g})" if k == 0 else None)
+                       label=lab_b if k == 0 else None)
     axs[1].set_xticks([0, 1, 2], ["F1", "precisión", "recall"])
-    axs[1].set_title("Por película: v1 vs umbrales elegidos")
+    axs[1].set_title("Por película: dos opciones de umbrales")
     axs[1].legend(loc="lower left")
     # tipos de error
-    tipos = pd.DataFrame({"v1": [a.fp.sum(), a.fusiones.sum(), (a.fn - a.fusiones).sum()],
-                          "elegido": [b.fp.sum(), b.fusiones.sum(), (b.fn - b.fusiones).sum()]},
+    tipos = pd.DataFrame({"a": [a.fp.sum(), a.fusiones.sum(), a.nucleos_sin_celula.sum()],
+                          "b": [b.fp.sum(), b.fusiones.sum(), b.nucleos_sin_celula.sum()]},
                          index=["célula sin núcleo", "fusión (>=2 núcleos)", "núcleos perdidos"])
     x = np.arange(3)
-    axs[2].bar(x - 0.2, tipos["v1"], 0.38, color=S.CAT[1], label="v1")
-    axs[2].bar(x + 0.2, tipos["elegido"], 0.38, color=S.CAT[0], label="elegido")
+    axs[2].bar(x - 0.2, tipos["a"], 0.38, color=S.CAT[1], label=lab_a)
+    axs[2].bar(x + 0.2, tipos["b"], 0.38, color=S.CAT[0], label=lab_b)
     axs[2].set_xticks(x, tipos.index, rotation=15)
     axs[2].set_title("Errores (frames de la grilla, 16 películas)")
     axs[2].legend()

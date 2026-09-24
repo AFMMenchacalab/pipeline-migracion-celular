@@ -40,8 +40,10 @@ el tracking los trata como tiempo perdido (`10_preparar_camad.py`).
    precisión, recall, fusiones y células perdidas
    (`resultados/v2/validacion_seg_bf/`).
 4. **CAMAD a resolución reducida 4×.** A resolución completa (lo que hacía
-   v1) Cellpose-SAM recupera ~53% de las células anotadas. Reduciendo 4×
-   (0.47 µm/px, similar a BF) recupera ~93%. Se barrieron las escalas 1, 2,
+   v1) Cellpose-SAM recupera el 62% de las células anotadas (IoU medio 0.55).
+   Reduciendo 4× (0.47 µm/px, similar a BF) recupera el 87% (IoU 0.72),
+   promediando los 16 experimentos. Los más difíciles son exp11 y exp12, con
+   células fuera de foco. Se barrieron las escalas 1, 2,
    4 y 6× y los umbrales, con validación cruzada por experimento
    (`resultados/v2/validacion_seg_camad/`).
 5. **Referencia CAMAD corregida.** v1 armaba las células de referencia con

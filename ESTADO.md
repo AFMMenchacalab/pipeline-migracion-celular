@@ -1,6 +1,27 @@
 # Estado del proyecto — pipeline Cellpose + laptrack
 
-Última actualización: 2026-09-20
+Última actualización: 2026-09-24 (pipeline v2)
+
+---
+
+## 🆕 PIPELINE v2 (noche del 2026-09-23 al 24)
+
+Detalle de cada cambio y su porqué: `CAMBIOS_v2.md`. Cómo correrlo: `README.md`.
+Repositorio (privado): https://github.com/AFMMenchacalab/pipeline-migracion-celular
+
+- [x] **Datos nuevos**: núcleos SiR-DNA de los mismos 1600 campos BF (Zenodo 10074471,
+  `datasets/sirdna-mdamb231/`, MD5 verificado) -> referencia para validar segmentación y
+  tracking (reemplaza a LFCT). CAMAD procesado completo (30 s/frame, 0.117 um/px, 40x;
+  datos del paper Iheme et al. 2024). WHAD (cierre de herida) analizado con sus máscaras manuales.
+- [x] Segmentación GPU en fp16 (1.7 s/img vs 4.1 en bf16), flows guardados en `~/microscopio_cache/`.
+- [x] CAMAD a resolución reducida 4x: recall contra anotación manual 62% -> 87% (IoU 0.55 -> 0.72; 16 exp). Difíciles: exp11 y exp12 (células desenfocadas).
+- [x] Umbrales BF elegidos contra núcleos; variantes de tracking validadas contra tracking de núcleos.
+- [x] Entropías de Shannon (SE Liu 2021, EAD Liu 2024) con corrección por tamaño de muestra;
+  simulaciones que reproducen los valores publicados (`19_simulaciones_metodos.py`).
+- [x] Reporte: HTML con videos, fotos y simulador interactivo (`23_reporte_html.py`).
+- ⚠️ exp8/exp9 de CAMAD: identidad celular incierta (nombre sugiere RAW 264.7, morfología
+  parece MDA-MB-231) -> fuera de la comparación entre sustratos.
+- ⚠️ `.git` vive dentro de la carpeta de Syncthing: no hacer commits desde las dos PCs a la vez.
 
 ---
 

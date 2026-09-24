@@ -94,25 +94,29 @@ def main():
     dev = torch.device("cuda")
     out = res_dir("validacion_seg_bf")
 
-    items = [it for it in listar_frames("bf") if it["frame"] % CADA == 0]
-    filas = []
     pool = ThreadPoolExecutor(max_workers=12)
-    t0 = time.time()
-    for n, it in enumerate(items):
-        dP, cp = cargar_flows(it["movie"], it["frame"])
-        nuc = cargar_mascara("sirdna", it["movie"], it["frame"])
-        futs = []
-        for cpt in CELLPROB:
-            for ft in FLOW:
-                m = dynamics.compute_masks(dP, cp, niter=200, cellprob_threshold=cpt,
-                                           flow_threshold=ft, min_size=15, device=dev)
-                futs.append((cpt, ft, pool.submit(metricas_vs_nucleos, m, nuc)))
-        for cpt, ft, f in futs:
-            r = f.result()
-            r.update(movie=it["movie"], frame=it["frame"], cellprob=cpt, flow=ft)
-            filas.append(r)
-        if n % 40 == 0:
-            print(f"{n}/{len(items)} ({time.time() - t0:.0f}s)", flush=True)
+    if (out / "grilla.csv").exists() and "--rehacer" not in sys.argv:
+        # la grilla ya se calculó (solo depende de los flows): se reutiliza
+        filas = pd.read_csv(out / "grilla.csv").to_dict("records")
+    else:
+        items = [it for it in listar_frames("bf") if it["frame"] % CADA == 0]
+        filas = []
+        t0 = time.time()
+        for n, it in enumerate(items):
+            dP, cp = cargar_flows(it["movie"], it["frame"])
+            nuc = cargar_mascara("sirdna", it["movie"], it["frame"])
+            futs = []
+            for cpt in CELLPROB:
+                for ft in FLOW:
+                    m = dynamics.compute_masks(dP, cp, niter=200, cellprob_threshold=cpt,
+                                               flow_threshold=ft, min_size=15, device=dev)
+                    futs.append((cpt, ft, pool.submit(metricas_vs_nucleos, m, nuc)))
+            for cpt, ft, f in futs:
+                r = f.result()
+                r.update(movie=it["movie"], frame=it["frame"], cellprob=cpt, flow=ft)
+                filas.append(r)
+            if n % 40 == 0:
+                print(f"{n}/{len(items)} ({time.time() - t0:.0f}s)", flush=True)
     df = pd.DataFrame(filas)
     df.to_csv(out / "grilla.csv", index=False)
 
@@ -133,10 +137,24 @@ def main():
     loeo.to_csv(out / "loeo.csv", index=False)
     rank = agg.groupby(params)[["f1", "precision", "recall"]].mean().sort_values("f1", ascending=False)
     rank.to_csv(out / "ranking_parametros.csv")
-    best = rank.index[0]
+    # Regla de desempate (decidida al ver que el F1 máximo y el de los umbrales
+    # por defecto diferían en 0.0007): diferencias de F1 menores que 1/10 del
+    # desvío del F1 entre películas se consideran empate, y entre las
+    # combinaciones empatadas se elige la de MAYOR PRECISIÓN. Para estadística
+    # de movimiento un objeto falso es peor que una célula perdida: el falso
+    # genera una trayectoria falsa (rapidez y ángulos de ruido), la perdida
+    # solo achica un poco la muestra.
+    sd_f1 = agg[(agg.cellprob == rank.index[0][0]) & (agg.flow == rank.index[0][1])].f1.std()
+    tol = 0.1 * sd_f1
+    empatadas = rank[rank.f1 >= rank.f1.iloc[0] - tol]
+    best = empatadas.sort_values("precision", ascending=False).index[0]
     base = agg[(agg.cellprob == 0.0) & (agg.flow == 0.4)]
     eleccion = {"cellprob_threshold": float(best[0]), "flow_threshold": float(best[1]),
-                "metricas_elegida_por_pelicula_media": rank.iloc[0].to_dict(),
+                "regla": "máximo F1; empate si la diferencia < 0.1 x SD(F1 entre películas); entre empatadas, mayor precisión",
+                "tolerancia_f1": float(tol), "empatadas": [list(map(float, i)) for i in empatadas.index],
+                "metricas_elegida_por_pelicula_media": rank.loc[best].to_dict(),
+                "maximo_f1": {"cellprob": float(rank.index[0][0]), "flow": float(rank.index[0][1]),
+                              **rank.iloc[0].to_dict()},
                 "metricas_loeo_media": loeo[["f1", "precision", "recall"]].mean().to_dict(),
                 "metricas_loeo_sd": loeo[["f1", "precision", "recall"]].std().to_dict(),
                 "metricas_v1_default(cp0,flow0.4)": base[["f1", "precision", "recall"]].mean().to_dict(),
