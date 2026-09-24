@@ -1,0 +1,401 @@
+<title>Migración de MDA-MB-231</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --ink: #111820; --ink-2: #4a5663; --ink-3: #6b7784;
+  --line: #d8dfe6; --accent: #1f63b5; --accent-2: #b9611a; --soft: #e7eef6; --soft-2: #f7efe6;
+  --good: #1d7a4a; --warn: #9a6400; --plate: #ffffff;
+  --serif: "Literata", "Georgia", "Times New Roman", serif;
+  --sans: "Source Sans 3", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1319; --surface: #151c24; --ink: #e8edf2; --ink-2: #a9b4bf; --ink-3: #8794a1;
+    --line: #2a3542; --accent: #74aef2; --accent-2: #f0a35e; --soft: #1a2633; --soft-2: #2a2118;
+    --good: #5cc28b; --warn: #e0b14f; --plate: #f7f8f9;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1319; --surface: #151c24; --ink: #e8edf2; --ink-2: #a9b4bf; --ink-3: #8794a1;
+  --line: #2a3542; --accent: #74aef2; --accent-2: #f0a35e; --soft: #1a2633; --soft-2: #2a2118;
+  --good: #5cc28b; --warn: #e0b14f; --plate: #f7f8f9;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 17px; line-height: 1.6; }
+.envoltorio { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 80px;
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 1060px) { .envoltorio { grid-template-columns: minmax(0, 1fr); gap: 0; } nav.indice { display: none; } }
+nav.indice { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start;
+  font-size: 14px; line-height: 1.35; max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 8px; }
+nav.indice p { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
+nav.indice ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; counter-reset: s; }
+nav.indice a { color: var(--ink-2); text-decoration: none; display: flex; gap: 8px; }
+nav.indice a::before { counter-increment: s; content: counter(s); font-family: var(--mono); font-size: 11px; color: var(--ink-3); min-width: 16px; padding-top: 2px; }
+nav.indice a:hover, nav.indice a:focus-visible { color: var(--accent); }
+main { min-width: 0; }
+.texto { max-width: 70ch; }
+header.portada { padding-block: 8px 20px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+.ceja { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+h1 { font-family: var(--serif); font-weight: 700; font-size: clamp(30px, 4.4vw, 46px); line-height: 1.12; margin: 0 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(24px, 3vw, 31px); line-height: 1.2; margin: 64px 0 14px; text-wrap: balance; scroll-margin-top: 20px; }
+h2 .num { font-family: var(--mono); font-size: 14px; color: var(--accent); display: block; margin-bottom: 6px; letter-spacing: .06em; font-weight: 500; }
+h3 { font-family: var(--serif); font-weight: 600; font-size: 21px; margin: 38px 0 8px; text-wrap: balance; }
+h4 { font-family: var(--sans); font-weight: 700; font-size: 15px; letter-spacing: .02em; margin: 22px 0 6px; }
+p { margin: 0 0 14px; }
+.lede { font-size: 19.5px; color: var(--ink-2); max-width: 64ch; }
+a { color: var(--accent); }
+strong { font-weight: 700; }
+.mono, .num-inline { font-family: var(--mono); font-size: .92em; font-variant-numeric: tabular-nums; }
+.hallazgos { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px; margin: 26px 0 8px; }
+.hallazgos h2 { margin-top: 0; font-size: 22px; }
+.hallazgos ol { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+.hallazgos li::marker { font-family: var(--mono); color: var(--accent); }
+.explica { background: var(--soft); border-radius: 8px; padding: 14px 18px; margin: 16px 0 18px; max-width: 76ch; }
+.explica > strong:first-child { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.explica p:last-child { margin-bottom: 0; }
+.aviso { background: var(--soft-2); border-radius: 8px; padding: 14px 18px; margin: 16px 0 18px; max-width: 76ch; }
+.aviso > strong:first-child { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--accent-2); margin-bottom: 4px; }
+.aviso p:last-child { margin-bottom: 0; }
+figure { margin: 22px 0 30px; }
+figure .placa { background: var(--plate); border-radius: 8px; padding: 10px; border: 1px solid var(--line); }
+figure img, figure video { display: block; width: 100%; height: auto; border-radius: 4px; cursor: zoom-in; }
+figure video { cursor: default; background: #000; }
+figcaption { font-size: 14.5px; color: var(--ink-2); margin-top: 10px; max-width: 90ch; line-height: 1.5; }
+figcaption b { color: var(--ink); }
+.rejilla-videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 18px; margin: 20px 0 30px; }
+.rejilla-videos figure { margin: 0; }
+.rejilla-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 16px; margin: 20px 0 26px; }
+.dato { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.dato img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: #000; }
+.dato div { padding: 12px 14px 14px; font-size: 15px; }
+.dato h4 { margin: 0 0 4px; font-size: 16px; }
+.dato .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.pasos { list-style: none; padding: 0; margin: 18px 0 24px; display: grid; gap: 12px; max-width: 80ch; }
+.pasos li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.pasos .n { font-family: var(--mono); font-size: 13px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--surface); display: grid; place-items: center; }
+.tabla { overflow-x: auto; margin: 16px 0 26px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--sans); font-weight: 700; font-size: 13px; color: var(--ink-2); background: var(--soft); white-space: nowrap; }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.sig { color: var(--good); font-weight: 600; }
+.nosig { color: var(--ink-3); }
+dl.glosario { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; gap: 10px 20px; max-width: 90ch; }
+dl.glosario dt { font-weight: 700; }
+dl.glosario dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 640px) { dl.glosario { grid-template-columns: 1fr; } dl.glosario dd { margin-bottom: 8px; } body { font-size: 16px; } }
+/* simulador */
+.simulador { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin: 20px 0 30px; }
+.simulador .controles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px 22px; margin-bottom: 14px; }
+.simulador label { font-size: 14px; color: var(--ink-2); display: grid; gap: 4px; }
+.simulador label span.v { font-family: var(--mono); color: var(--ink); }
+.simulador input[type=range] { width: 100%; accent-color: var(--accent); }
+.simulador .lienzos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.simulador canvas { width: 100%; height: auto; aspect-ratio: 4 / 3; background: var(--bg); border-radius: 6px; display: block; }
+.simulador .lectura { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 14px; font-size: 15px; }
+.simulador .lectura b { font-family: var(--mono); font-size: 18px; color: var(--accent); }
+.simulador button { font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+.simulador button:hover, .simulador button:focus-visible { background: var(--accent); color: var(--surface); }
+.simulador .interpreta { margin-top: 10px; color: var(--ink-2); font-size: 15px; max-width: 80ch; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* visor ampliado */
+#visor { position: fixed; inset: 0; background: rgba(8, 12, 16, .88); display: grid; place-items: center; padding: 20px; z-index: 50; cursor: zoom-out; }
+#visor img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 6px; }
+footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="envoltorio">
+<nav class="indice" aria-label="Índice">
+  <p>Contenido</p>
+  <ol>
+    <li><a href="#resumen">Lo más importante</a></li>
+    <li><a href="#contexto">Qué medimos y por qué</a></li>
+    <li><a href="#datos">Los datos</a></li>
+    <li><a href="#proceso">Cómo se analiza un video</a></li>
+    <li><a href="#validacion">¿Son confiables las mediciones?</a></li>
+    <li><a href="#persistencia">Cómo se mide la persistencia</a></li>
+    <li><a href="#bf">Resultados: MDA-MB-231 en plástico</a></li>
+    <li><a href="#nucleos">Células o núcleos: ¿da lo mismo?</a></li>
+    <li><a href="#camad">Resultados: distintos sustratos</a></li>
+    <li><a href="#whad">Resultados: cierre de herida</a></li>
+    <li><a href="#limitaciones">Limitaciones</a></li>
+    <li><a href="#siguiente">Próximos pasos</a></li>
+    <li><a href="#glosario">Glosario</a></li>
+    <li><a href="#tecnico">Anexo técnico</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="portada">
+  <p class="ceja">Reporte de avance · {{FECHA}}</p>
+  <h1>Cómo se mueven las células de cáncer de mama MDA-MB-231</h1>
+  <p class="lede">Seguimos miles de células en videos de microscopio, una por una, y medimos su rapidez y la persistencia con que mantienen su dirección, incluidas las dos medidas de entropía de Shannon propuestas por Liu et al. (2021, 2024). Este reporte explica cómo se hizo, cuánto se puede confiar en cada número y qué encontramos.</p>
+  <figure>
+    <div class="placa"><video src="videos/pipeline_bf.mp4" poster="videos/pipeline_bf.jpg" controls muted loop playsinline preload="metadata" aria-label="Video del análisis en cuatro pasos"></video></div>
+    <figcaption><b>El análisis en cuatro pasos, sobre un video real.</b> (1) Imagen de microscopio sin marcar (brightfield), una cada 5 minutos durante 8 horas. (2) Un modelo de inteligencia artificial (Cellpose) detecta el contorno de cada célula. (3) En el mismo campo, una tinción fluorescente muestra los núcleos, que usamos para comprobar que el paso 2 funciona. (4) Unimos cada célula con la misma célula en la imagen siguiente y obtenemos su trayectoria. Cada línea de color es el camino recorrido por una célula en los últimos 100 minutos.</figcaption>
+  </figure>
+</header>
+
+<section class="hallazgos" id="resumen">
+  <h2>Lo más importante</h2>
+  <ol>
+{{HALLAZGOS}}
+  </ol>
+</section>
+
+<section id="contexto" class="texto">
+  <h2><span class="num">1</span>Qué medimos y por qué</h2>
+  <p>Las células de cáncer de mama <b>MDA-MB-231</b> son muy invasivas: en el cuerpo se desplazan desde el tumor hacia otros tejidos, y ese movimiento es parte de cómo se produce la metástasis. En el laboratorio se las filma con un microscopio durante horas para estudiar <b>cuánto</b> se mueven (rapidez) y <b>cómo</b> se mueven, es decir, si avanzan en una dirección sostenida o cambian de rumbo todo el tiempo.</p>
+  <p>Esa segunda propiedad se llama <b>persistencia direccional</b>. Una célula persistente se parece a alguien que camina hacia un destino; una célula no persistente se parece a alguien que da pasos en direcciones al azar. Dos células pueden tener la misma rapidez y, sin embargo, una llega mucho más lejos que la otra porque es más persistente.</p>
+  <p>Para medir la persistencia usamos las herramientas clásicas (desplazamiento cuadrático medio y modelo de caminata aleatoria persistente) y además las dos medidas basadas en <b>entropía de Shannon</b> que propusieron Liu y colaboradores en <i>Biophysical Journal</i> (2021 y 2024). La entropía es un número entre 0 y 1 que mide qué tan "ordenado" es el movimiento: cerca de 0 significa movimiento muy dirigido y cerca de 1 significa movimiento sin dirección preferida.</p>
+</section>
+
+<section id="datos">
+  <h2><span class="num">2</span>Los datos</h2>
+  <p class="texto">Trabajamos con cuatro conjuntos de videos públicos. Dos de ellos son nuevos respecto de la versión anterior del análisis.</p>
+  <div class="rejilla-datos">
+{{TARJETAS_DATOS}}
+  </div>
+  <div class="aviso"><strong>Dos experimentos con identidad dudosa</strong><p>En CAMAD, los experimentos 8 y 9 tienen un nombre de archivo que sugiere que las células filmadas son macrófagos (RAW 264.7) sobre una matriz producida por MDA-MB-231. Sin embargo, al mirarlas se parecen a las MDA-MB-231 de los otros experimentos, y la planilla con el detalle de cada experimento no es pública. Por prudencia, los mostramos aparte y no los incluimos en la comparación entre sustratos.</p></div>
+</section>
+
+<section id="proceso">
+  <h2><span class="num">3</span>Cómo se analiza un video</h2>
+  <ol class="pasos texto">
+    <li><span class="n">1</span><div><b>Detectar las células (segmentación).</b> Cellpose-SAM, un modelo de aprendizaje profundo entrenado con miles de imágenes de células, dibuja el contorno de cada célula en cada imagen. Ajustamos sus dos umbrales de sensibilidad comparando contra los núcleos fluorescentes y contra dibujos hechos a mano.</div></li>
+    <li><span class="n">2</span><div><b>Seguir cada célula (tracking).</b> Para cada par de imágenes consecutivas se decide qué célula de la segunda imagen es la misma que cada célula de la primera, eligiendo el emparejamiento que minimiza la distancia total recorrida (algoritmo LAP, paquete laptrack). Si una célula desaparece uno o dos cuadros y reaparece cerca, se la vuelve a unir.</div></li>
+    <li><span class="n">3</span><div><b>Convertir píxeles en micrómetros y cuadros en minutos.</b> Cada dataset tiene su calibración (por ejemplo, 0.65 µm por píxel y 5 min entre imágenes en brightfield).</div></li>
+    <li><span class="n">4</span><div><b>Calcular las medidas de movimiento</b> de cada célula y de cada video: rapidez, persistencia, entropías, forma celular y coordinación entre vecinas.</div></li>
+    <li><span class="n">5</span><div><b>Resumir y comparar con la estadística correcta.</b> La unidad independiente es el video (o el experimento), no la célula: las células de un mismo video comparten condiciones y se influyen entre sí. Por eso cada número poblacional se calcula dentro de cada video y después se promedia entre videos, con intervalos de confianza por remuestreo (bootstrap).</div></li>
+  </ol>
+  <figure>
+    <div class="placa"><img src="figuras/bf_trayectorias.png" alt="Trayectorias de células sobre tres campos de microscopio" loading="lazy"></div>
+    <figcaption><b>Trayectorias sobre la primera imagen de tres videos.</b> Cada línea es una célula seguida al menos 100 minutos. La película 15 (derecha) es mucho más densa que el resto: allí las células se tocan y se empujan.</figcaption>
+  </figure>
+  <figure>
+    <div class="placa"><video src="videos/bf_campo_denso.mp4" poster="videos/bf_campo_denso.jpg" controls muted loop playsinline preload="metadata" aria-label="Video del campo más denso con trayectorias"></video></div>
+    <figcaption><b>El campo más denso, completo.</b> En amarillo, el contorno que detecta Cellpose; en color, la trayectoria reciente de cada célula.</figcaption>
+  </figure>
+</section>
+
+<section id="validacion">
+  <h2><span class="num">4</span>¿Son confiables las mediciones?</h2>
+  <p class="texto">Antes de interpretar cualquier resultado hay que saber cuánto se equivoca el análisis. En la versión anterior no había forma de comprobarlo, porque el único dataset con anotación manual (LFCT) no se pudo descargar. Ahora hay tres referencias independientes.</p>
+{{VALIDACION}}
+</section>
+
+<section id="persistencia">
+  <h2><span class="num">5</span>Cómo se mide la persistencia</h2>
+  <div class="texto">
+  <h3>Desplazamiento cuadrático medio y caminata persistente</h3>
+  <p>La forma clásica mide cuánto se aleja una célula de su posición inicial según el tiempo transcurrido (desplazamiento cuadrático medio, <b>MSD</b>). Si la célula se moviera siempre en línea recta, el MSD crecería con el cuadrado del tiempo; si se moviera al azar, crecería en proporción directa al tiempo. Las células reales están en el medio: van derecho durante un rato y después cambian de rumbo. El <b>modelo de caminata aleatoria persistente (PRW)</b> resume esto en dos números: la rapidez y el <b>tiempo de persistencia P</b>, que es aproximadamente cuánto tiempo mantiene una célula su dirección.</p>
+  <p>Agregamos al modelo un término que representa el <b>error de posición</b>: el centro de una célula calculado desde su contorno "tiembla" algunos micrómetros de una imagen a otra aunque la célula no se mueva, porque el contorno cambia de forma. Sin ese término, el temblor se confunde con movimiento al azar y la persistencia sale artificialmente corta.</p>
+  <h3>Entropía del espectro de velocidad (SE)</h3>
+  <p>Liu et al. (2021) proponen descomponer la velocidad de la célula en "ritmos" lentos y rápidos (análisis de Fourier). Un movimiento persistente concentra su energía en los ritmos lentos; un movimiento al azar la reparte por igual entre todos. La entropía de ese reparto, normalizada entre 0 y 1, es la <b>SE</b>. Con una variante (transformada wavelet) se obtiene la SE en cada instante, lo que permite ver si una célula cambia de comportamiento durante el video.</p>
+  <h3>Entropía de la distribución de ángulos (EAD)</h3>
+  <p>Liu et al. (2024) miran directamente los <b>ángulos de giro</b>: el ángulo entre la dirección de un paso y la del paso siguiente (o la de varios pasos después). Si la célula mantiene la dirección, casi todos los ángulos están cerca de 0°, el histograma tiene un pico y la entropía es baja. Si gira al azar, los ángulos se reparten parejos entre −180° y 180° y la entropía se acerca a 1. <b>EAD₁</b> es la entropía de los giros entre pasos consecutivos; <b>TL₁</b> es cuánto tiempo hay que esperar para que la dirección "se olvide" por completo.</p>
+  </div>
+  <div class="simulador" id="simulador">
+    <h4 style="margin-top:0">Pruébelo: una célula simulada</h4>
+    <p class="texto" style="font-size:15px">Mueva los controles para simular una célula con distinta persistencia. A la izquierda, su trayectoria; a la derecha, el histograma de sus ángulos de giro entre pasos de 5 minutos. Se usan la rapidez típica medida en nuestros datos (0.85 µm/min) y el mismo número de pasos que tiene una célula típica.</p>
+    <div class="controles">
+      <label for="c-p">Tiempo de persistencia P <span class="v" id="v-p"></span><input type="range" id="c-p" min="0" max="100" value="55"></label>
+      <label for="c-s">Error de posición σ <span class="v" id="v-s"></span><input type="range" id="c-s" min="0" max="30" value="0"></label>
+      <label for="c-n">Pasos de 5 min en la trayectoria <span class="v" id="v-n"></span><input type="range" id="c-n" min="10" max="400" value="60"></label>
+    </div>
+    <div class="lienzos">
+      <canvas id="lienzo-tray" width="640" height="480" aria-label="Trayectoria simulada"></canvas>
+      <canvas id="lienzo-hist" width="640" height="480" aria-label="Histograma de ángulos de giro"></canvas>
+    </div>
+    <div class="lectura">
+      <div>EAD₁ cruda <b id="o-cr">–</b></div>
+      <div>EAD₁ corregida <b id="o-co">–</b></div>
+      <div>⟨cos giro⟩ <b id="o-cos">–</b></div>
+      <button type="button" id="b-nueva">Otra célula con los mismos parámetros</button>
+    </div>
+    <p class="interpreta" id="o-txt"></p>
+  </div>
+  <div class="explica texto"><strong>Una corrección necesaria (aporte propio)</strong>
+    <p>Con pocos ángulos el histograma nunca se ve perfectamente parejo, aunque la célula gire completamente al azar. Por eso la entropía "cruda" sale menor que 1 en trayectorias cortas y parece indicar persistencia donde no la hay. Con 20 ángulos al azar la EAD cruda da en promedio 0.74, no 1. En nuestros datos una célula tiene entre 12 y 100 pasos, así que sin corregir la EAD mediría en parte la longitud de la trayectoria. Dividimos cada valor por el que se obtendría con giros completamente aleatorios y la misma cantidad de ángulos (<b>EAD corregida</b>): así vale 1 para el movimiento al azar sin importar la longitud. En el simulador, baje el número de pasos con la persistencia al mínimo y compare las dos lecturas.</p>
+  </div>
+{{SIMULACIONES}}
+</section>
+
+<section id="bf">
+  <h2><span class="num">6</span>Resultados: MDA-MB-231 en plástico</h2>
+{{RESULTADOS_BF}}
+</section>
+
+<section id="nucleos">
+  <h2><span class="num">7</span>Células o núcleos: ¿da lo mismo?</h2>
+{{BF_VS_NUC}}
+</section>
+
+<section id="camad">
+  <h2><span class="num">8</span>Resultados: distintos sustratos (CAMAD)</h2>
+{{RESULTADOS_CAMAD}}
+</section>
+
+<section id="whad">
+  <h2><span class="num">9</span>Resultados: cierre de herida (WHAD)</h2>
+{{RESULTADOS_WHAD}}
+</section>
+
+<section id="limitaciones" class="texto">
+  <h2><span class="num">10</span>Limitaciones</h2>
+{{LIMITACIONES}}
+</section>
+
+<section id="siguiente" class="texto">
+  <h2><span class="num">11</span>Próximos pasos</h2>
+{{PROXIMOS}}
+</section>
+
+<section id="glosario">
+  <h2><span class="num">12</span>Glosario</h2>
+  <dl class="glosario">
+    <dt>Brightfield</dt><dd>Microscopía de campo claro: la luz atraviesa la muestra sin tinción. Las células se ven por pequeños cambios de contraste.</dd>
+    <dt>Contraste de fase</dt><dd>Técnica de microscopía que convierte diferencias de espesor de la célula en diferencias de brillo. Es la que usa CAMAD.</dd>
+    <dt>SiR-DNA</dt><dd>Colorante fluorescente que se une al ADN y marca el núcleo de células vivas.</dd>
+    <dt>Segmentación</dt><dd>Delimitar el contorno de cada célula en una imagen.</dd>
+    <dt>Cellpose-SAM</dt><dd>Modelo de aprendizaje profundo que segmenta células en imágenes de microscopía.</dd>
+    <dt>Tracking</dt><dd>Seguir a cada célula de una imagen a la siguiente para reconstruir su trayectoria.</dd>
+    <dt>Eslabón</dt><dd>La unión entre la posición de una célula en una imagen y su posición en la siguiente.</dd>
+    <dt>Rapidez</dt><dd>Distancia recorrida por unidad de tiempo (µm/min), sin importar la dirección.</dd>
+    <dt>Persistencia direccional</dt><dd>Tendencia de una célula a mantener la dirección en la que se mueve.</dd>
+    <dt>MSD</dt><dd>Desplazamiento cuadrático medio: cuánto se aleja, en promedio, una célula de donde estaba después de un tiempo τ.</dd>
+    <dt>α (exponente)</dt><dd>Cómo crece el MSD con el tiempo: α = 1 es movimiento al azar (difusivo), α = 2 es movimiento en línea recta (balístico).</dd>
+    <dt>PRW y P</dt><dd>Caminata aleatoria persistente: modelo en el que la célula recuerda su dirección durante un tiempo típico P (tiempo de persistencia).</dd>
+    <dt>σ (error de posición)</dt><dd>Cuánto "tiembla" la posición medida de una célula aunque no se mueva, por el cambio de forma de su contorno.</dd>
+    <dt>VACF</dt><dd>Autocorrelación de la velocidad: qué tanto se parece la velocidad actual a la de un tiempo atrás.</dd>
+    <dt>Entropía de Shannon</dt><dd>Medida del desorden de una distribución. Normalizada, vale 0 si todo está concentrado en un valor y 1 si todo está repartido por igual.</dd>
+    <dt>SE</dt><dd>Entropía del espectro de la velocidad (Liu et al. 2021): baja si la célula se mueve de forma sostenida, 1 si se mueve al azar.</dd>
+    <dt>EAD, EAD₁, TL₁</dt><dd>Entropía de la distribución de ángulos de giro (Liu et al. 2024). EAD₁ usa pasos consecutivos; TL₁ es el tiempo hasta que la dirección se pierde por completo.</dd>
+    <dt>EAD / SE corregida</dt><dd>La misma entropía dividida por el valor esperado para movimiento al azar con la misma cantidad de datos. Vale 1 para movimiento sin dirección preferida y menos de 1 si hay persistencia.</dd>
+    <dt>Réplica</dt><dd>Unidad independiente para la estadística: aquí, cada video o experimento.</dd>
+    <dt>IC95%</dt><dd>Intervalo de confianza del 95%: rango de valores compatibles con los datos. Se calcula remuestreando los videos (bootstrap).</dd>
+    <dt>p y corrección de Holm</dt><dd>La p mide qué tan sorprendente sería el resultado si no hubiera efecto. Cuando se hacen muchas pruebas a la vez, la corrección de Holm evita encontrar diferencias por azar.</dd>
+    <dt>Modelo mixto</dt><dd>Modelo estadístico que usa los datos de cada célula pero reconoce que las células de un mismo experimento no son independientes.</dd>
+    <dt>F1, precisión, recall</dt><dd>Medidas de acierto: recall es la fracción de células reales que se encontraron; precisión, la fracción de detecciones que eran células reales; F1 combina ambas.</dd>
+    <dt>IoU</dt><dd>Superposición entre el contorno detectado y el dibujado a mano (0 = nada en común, 1 = idénticos).</dd>
+  </dl>
+</section>
+
+<section id="tecnico">
+  <h2><span class="num">13</span>Anexo técnico</h2>
+{{TECNICO}}
+</section>
+
+<footer>
+  Generado automáticamente a partir de <span class="mono">resultados/v2/</span> por <span class="mono">scripts/23_reporte_html.py</span> · {{FECHA}}. Referencias: Liu Y. et al., Biophys J 120:2552 (2021), doi:10.1016/j.bpj.2021.04.026 · Liu Y. et al., Biophys J 123:730 (2024), doi:10.1016/j.bpj.2024.02.010 · Iheme L.O. et al., IEEE Data Descriptions 1:95 (2024), doi:10.1109/IEEEDATA.2024.3481394 · Stringer C. et al., Cellpose · Fukai Y.T. y Kawaguchi K., laptrack · Torrence C. y Compo G.P., Bull Am Meteorol Soc 79:61 (1998) · Maiuri P. et al., Cell 161:374 (2015).
+</footer>
+</main>
+</div>
+
+<div id="visor" hidden><img alt=""></div>
+
+<script>
+(() => {
+  // ------- visor de figuras
+  const visor = document.getElementById("visor");
+  const vimg = visor.querySelector("img");
+  document.querySelectorAll("figure img").forEach(img => {
+    img.addEventListener("click", () => { vimg.src = img.src; vimg.alt = img.alt; visor.hidden = false; });
+  });
+  visor.addEventListener("click", () => { visor.hidden = true; });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") visor.hidden = true; });
+
+  // ------- simulador de EAD
+  const $ = id => document.getElementById(id);
+  const cP = $("c-p"), cS = $("c-s"), cN = $("c-n");
+  const DT = 5, S = 0.85, BINS = 12;
+  let semilla = 7;
+  const P_de = v => Math.round(10 * Math.pow(10, -0.3 + (v / 100) * 2.38)) / 10;   // 0.5 ... 120 min
+  function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function normal(r) { let u = 0, v = 0; while (u === 0) u = r(); v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function simular(P, sigma, N, seed) {
+    const r = rng(seed), sub = Math.max(1, Math.ceil(5 * DT / P)), h = DT / sub, a = 1 - h / P, F = Math.sqrt(S * S * h * h * h / P);
+    let dx = normal(r) * S * h / Math.SQRT2, dy = normal(r) * S * h / Math.SQRT2, x = 0, y = 0;
+    const pts = [[0, 0]];
+    for (let i = 0; i < N * sub; i++) {
+      dx = a * dx + F * normal(r); dy = a * dy + F * normal(r); x += dx; y += dy;
+      if ((i + 1) % sub === 0) pts.push([x, y]);
+    }
+    return pts.map(p => [p[0] + sigma * normal(r), p[1] + sigma * normal(r)]);
+  }
+  function angulos(pts) {
+    const v = []; for (let i = 1; i < pts.length; i++) v.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]]);
+    const th = []; for (let i = 1; i < v.length; i++) { const [a1, b1] = v[i - 1], [a2, b2] = v[i]; th.push(Math.atan2(a1 * b2 - b1 * a2, a1 * a2 + b1 * b2)); }
+    return th;
+  }
+  function hist(th) { const c = new Array(BINS).fill(0); th.forEach(t => { let k = Math.floor((t + Math.PI) / (2 * Math.PI) * BINS); c[Math.min(BINS - 1, Math.max(0, k))]++; }); return c; }
+  function entropia(c) { const tot = c.reduce((s, x) => s + x, 0); if (!tot) return NaN; let H = 0; c.forEach(x => { if (x > 0) { const p = x / tot; H -= p * Math.log2(p); } }); return H / Math.log2(c.length); }
+  const cacheNula = {};
+  function nula(m) {
+    if (cacheNula[m]) return cacheNula[m];
+    const r = rng(1000 + m); let s = 0; const R = 1500;
+    for (let k = 0; k < R; k++) { const c = new Array(BINS).fill(0); for (let i = 0; i < m; i++) c[Math.floor(r() * BINS)]++; s += entropia(c); }
+    return (cacheNula[m] = s / R);
+  }
+  function tokens() { const cs = getComputedStyle(document.documentElement); const g = n => cs.getPropertyValue(n).trim(); return { ink: g("--ink"), ink2: g("--ink-2"), line: g("--line"), acc: g("--accent"), acc2: g("--accent-2"), bg: g("--bg") }; }
+  function dibujarTray(pts) {
+    const cv = $("lienzo-tray"), ctx = cv.getContext("2d"), T = tokens(), W = cv.width, H = cv.height, m = 36;
+    ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+    let xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 20);
+    const esc = Math.min(W - 2 * m, H - 2 * m) / span;
+    const X = x => W / 2 + (x - cx) * esc, Y = y => H / 2 - (y - cy) * esc;
+    ctx.strokeStyle = T.acc; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke();
+    ctx.fillStyle = T.ink; ctx.beginPath(); ctx.arc(X(pts[0][0]), Y(pts[0][1]), 6, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = T.acc2; ctx.beginPath(); ctx.arc(X(pts.at(-1)[0]), Y(pts.at(-1)[1]), 6, 0, 2 * Math.PI); ctx.fill();
+    // barra de escala
+    let L = [5, 10, 20, 50, 100, 200, 500].find(l => l * esc > 60) || 500;
+    ctx.strokeStyle = T.ink2; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(m, H - m / 2); ctx.lineTo(m + L * esc, H - m / 2); ctx.stroke();
+    ctx.fillStyle = T.ink2; ctx.font = "22px 'IBM Plex Mono', monospace"; ctx.fillText(`${L} µm`, m + L * esc + 10, H - m / 2 + 7);
+    ctx.fillText("● inicio", W - 190, 32); ctx.fillStyle = T.acc2; ctx.fillText("● fin", W - 190, 60);
+  }
+  function dibujarHist(c) {
+    const cv = $("lienzo-hist"), ctx = cv.getContext("2d"), T = tokens(), W = cv.width, H = cv.height;
+    const ml = 56, mr = 18, mt = 26, mb = 64, tot = c.reduce((s, x) => s + x, 0) || 1;
+    ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+    const dens = c.map(x => x / tot), ymax = Math.max(0.3, ...dens) * 1.1, bw = (W - ml - mr) / BINS;
+    const Y = v => H - mb - v / ymax * (H - mt - mb);
+    ctx.strokeStyle = T.line; ctx.lineWidth = 1; ctx.fillStyle = T.ink2; ctx.font = "20px 'IBM Plex Mono', monospace";
+    for (let t = 0; t <= ymax; t += 0.1) { ctx.beginPath(); ctx.moveTo(ml, Y(t)); ctx.lineTo(W - mr, Y(t)); ctx.stroke(); ctx.fillText(t.toFixed(1), 6, Y(t) + 7); }
+    dens.forEach((d, i) => { ctx.fillStyle = T.acc; const x = ml + i * bw + 2, y = Y(d); ctx.beginPath(); ctx.roundRect(x, y, bw - 4, H - mb - y, [4, 4, 0, 0]); ctx.fill(); });
+    const u = 1 / BINS; ctx.setLineDash([8, 6]); ctx.strokeStyle = T.ink2; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ml, Y(u)); ctx.lineTo(W - mr, Y(u)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = T.ink2; [-180, -90, 0, 90, 180].forEach(a => { const x = ml + (a + 180) / 360 * (W - ml - mr); ctx.fillText(`${a}°`, x - 22, H - mb + 28); });
+    ctx.fillText("ángulo de giro entre pasos", ml + 60, H - 10);
+    ctx.fillText("fracción", 6, 18); ctx.fillText("- - al azar", W - 190, 22);
+  }
+  function actualizar() {
+    const P = P_de(+cP.value), sigma = +cS.value / 10, N = +cN.value;
+    $("v-p").textContent = `${P} min`; $("v-s").textContent = `${sigma.toFixed(1)} µm`; $("v-n").textContent = `${N} (${(N * DT / 60).toFixed(1)} h)`;
+    const pts = simular(P, sigma, N, semilla), th = angulos(pts), c = hist(th);
+    const cr = entropia(c), co = cr / nula(th.length), cosm = th.reduce((s, t) => s + Math.cos(t), 0) / th.length;
+    $("o-cr").textContent = cr.toFixed(3); $("o-co").textContent = co.toFixed(3); $("o-cos").textContent = cosm.toFixed(2);
+    let txt;
+    if (co > 0.97) txt = "La dirección de un paso casi no predice la del siguiente: el movimiento es prácticamente aleatorio a esta escala de 5 minutos.";
+    else if (co > 0.85) txt = "Hay una persistencia leve: los giros pequeños son algo más frecuentes que los grandes.";
+    else txt = "Movimiento claramente persistente: la mayoría de los giros son pequeños y la trayectoria avanza en una dirección sostenida.";
+    if (sigma >= 1.5 && P > 10) txt += " Observe que el error de posición borra buena parte de la persistencia real: los giros medidos parecen más aleatorios de lo que son.";
+    if (N < 40 && co > 0.95 && cr < 0.9) txt += " Con tan pocos pasos la EAD cruda parece indicar persistencia, pero la corregida muestra que es un efecto del tamaño de la muestra.";
+    $("o-txt").textContent = txt;
+    dibujarTray(pts); dibujarHist(c);
+  }
+  [cP, cS, cN].forEach(el => el.addEventListener("input", actualizar));
+  $("b-nueva").addEventListener("click", () => { semilla = Math.floor(Math.random() * 1e9); actualizar(); });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", actualizar);
+  new MutationObserver(actualizar).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  actualizar();
+})();
+</script>
