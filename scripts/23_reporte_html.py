@@ -47,7 +47,7 @@ def fp(p):
         return "–"
     if not np.isfinite(p):
         return "–"
-    return "< 0.001" if p < 0.001 else f"{p:.3f}"
+    return "&lt; 0.001" if p < 0.001 else f"{p:.3f}"
 
 
 def js(*partes):
@@ -177,6 +177,51 @@ def tarjetas_datos():
 
 
 # ------------------------------------------------------------------ secciones
+def seccion_cellpose():
+    """Diferencias entre Cellpose 3 y Cellpose-SAM (arquitectura y por qué se usa SAM)."""
+    c = js("cellpose3_vs_sam", "comparacion.json")
+    s = ['<div class="texto"><h3>¿Por qué Cellpose-SAM y no Cellpose 3?</h3>',
+         "<p>Las dos versiones de Cellpose predicen lo mismo para cada píxel: la probabilidad de que pertenezca a una célula y un «flujo» que apunta hacia el centro de su célula. Después, un mismo post-proceso sigue esos flujos y agrupa los píxeles que llegan al mismo centro, y así separa células que se tocan. Lo que cambia es la red neuronal que hace esa predicción.</p></div>"]
+    filas = [
+        ("Arquitectura", "U-Net residual: red convolucional que mira vecindarios locales de la imagen y los combina a varias escalas",
+         "Codificador de <i>Segment Anything</i> (SAM, Meta): un <i>vision transformer</i> (ViT-L) que divide la imagen en parches y, mediante atención, relaciona cada parche con todos los demás del bloque"),
+        ("Tamaño", "6.6 millones de parámetros", "304.6 millones de parámetros (24 bloques de transformer de dimensión 1024)"),
+        ("Preentrenamiento", "Solo imágenes de microscopía de células (varios conjuntos públicos combinados)",
+         "SAM se preentrenó con 11 millones de imágenes y más de mil millones de contornos de objetos. Después se reentrenó entero con imágenes de células"),
+        ("Resolución de trabajo", "Reescala la imagen para que las células midan ~30 píxeles de diámetro",
+         "Parches de 8 × 8 píxeles (SAM original usa 16 × 16) para ver estructuras pequeñas; bloques de 256 × 256"),
+        ("Tamaño de las células", "Hay que indicar el diámetro o estimarlo con un segundo modelo; si se estima mal, la segmentación empeora",
+         "No necesita diámetro: se entrenó con células de tamaños muy distintos"),
+        ("Canales e imagen", "Hay que indicar qué canal es citoplasma y cuál núcleo",
+         "No necesita indicarlo; se entrenó con canales en cualquier orden y con imágenes ruidosas, borrosas o de baja resolución"),
+        ("Costo de cálculo", f"{f(c.get('cellpose3', {}).get('gflop_por_bloque_224', 31), 0)} GFLOP por bloque de 224 × 224; funciona razonablemente en CPU",
+         "727 GFLOP por bloque de 256 × 256 (unas 20 veces más); en la práctica necesita GPU"),
+    ]
+    s.append(tabla(pd.DataFrame(filas, columns=["a", "b", "c"]), ["a", "b", "c"], ["", "Cellpose 3 (cyto3)", "Cellpose-SAM (cpsam, Cellpose 4)"]))
+    s.append('<div class="texto">')
+    s.append("<p><b>Por qué es mejor Cellpose-SAM para este trabajo.</b> Primero, la atención le permite usar el contexto de todo el bloque y no solo el vecindario inmediato. Eso ayuda a decidir dónde termina una célula y empieza otra cuando se tocan o cuando el borde es tenue, como en brightfield. Segundo, el preentrenamiento de SAM le da una noción general de qué es un «objeto». Por eso, según sus autores, generaliza a tipos de imagen que no vio al entrenarse con una precisión comparable a la de anotadores humanos (Pachitariu, Rariden y Stringer, 2025). Tercero, al no depender del diámetro ni del orden de los canales, el mismo modelo sirve sin ajustes para brightfield, fluorescencia de núcleos y contraste de fase, que son las tres modalidades de este trabajo.</p>")
+    if c:
+        a, b = c["cellpose3"], c["cellpose_sam"]
+        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p = {fp(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 10).</p>")
+    s.append("</div>")
+    return "\n".join(s)
+
+
+def camad_aplicada():
+    """Configuración aplicada a CAMAD (eleccion_aplicada.json); si todavía no
+    existe, la mejor de la escala de extracción según la grilla."""
+    ea = js("validacion_seg_camad", "eleccion_aplicada.json")
+    if ea:
+        return ea
+    rk = csv("validacion_seg_camad", "ranking_parametros.csv")
+    if rk is None:
+        return {}
+    from lib.config import CAMAD_DOWNSAMPLE
+    rk["pf"] = rk.puntaje + 0.5 * rk.precision_local.fillna(0)
+    r = rk[rk.escala == CAMAD_DOWNSAMPLE].sort_values("pf", ascending=False).iloc[0]
+    return {"recall": r.recall, "iou_medio": r.iou_medio, "cellprob_threshold": r.cellprob, "flow_threshold": r.flow}
+
+
 def seccion_validacion():
     s = []
     el = js("validacion_seg_bf", "eleccion.json")
@@ -195,12 +240,12 @@ def seccion_validacion():
     s.append(figura("figuras/ejemplo_pelicula15_frame050.jpg",
                      "<b>Ejemplo del campo más denso.</b> Izquierda: brightfield con el contorno de cada célula detectada y el centro de cada núcleo (puntos celestes). Derecha: la imagen de núcleos. Aun con células que se tocan, casi todos los contornos contienen un único núcleo."))
     # CAMAD
-    ea = js("validacion_seg_camad", "eleccion_aplicada.json")
+    ea = camad_aplicada()
     g = csv("validacion_seg_camad", "grilla.csv")
     s.append('<h3>Segmentación de CAMAD comparada con dibujos hechos a mano</h3><div class="texto">')
     if g is not None:
         full = g[(g.escala == 1)].groupby("exp").recall.mean().mean()
-        s.append(f"<p>CAMAD trae 96 imágenes en las que un experto dibujó el contorno de las células aisladas. Con las imágenes a resolución completa (como hacía la versión anterior), Cellpose encontraba el <b>{f(100 * full, 0)}%</b> de esas células. La causa es la escala: a 0.117 µm por píxel una célula mide 150–400 píxeles, mucho más de lo que el modelo espera. Reduciendo cada imagen 4 veces por lado, el recall sube al <b>{f(100 * ea.get('recall', np.nan), 0)}%</b>, con una superposición media (IoU) de {f(ea.get('iou_medio'), 2)} entre el contorno detectado y el dibujado. Además cada video se procesa unas 10 veces más rápido. Si la configuración se elige dejando afuera cada experimento y se evalúa en ese experimento (una estimación más exigente), el recall es {f(100 * js('validacion_seg_camad', 'eleccion.json').get('metricas_loeo_media', {}).get('recall', np.nan), 0)}%. Los experimentos más difíciles son el 11 (Matrigel) y el 12 (colágeno), con muchas células fuera de foco.</p>")
+        s.append(f"<p>CAMAD trae 96 imágenes en las que un experto dibujó el contorno de las células aisladas. Con las imágenes a resolución completa (como hacía la versión anterior), Cellpose encontraba el <b>{f(100 * full, 1)}%</b> de esas células. La causa es la escala: a 0.117 µm por píxel una célula mide 150–400 píxeles, mucho más de lo que el modelo espera. Reduciendo cada imagen 4 veces por lado, el recall sube al <b>{f(100 * ea.get('recall', np.nan), 1)}%</b>, con una superposición media (IoU) de {f(ea.get('iou_medio'), 2)} entre el contorno detectado y el dibujado. Además cada video se procesa unas 10 veces más rápido. Si la configuración se elige dejando afuera cada experimento y se evalúa en ese experimento (una estimación más exigente), el recall es {f(100 * js('validacion_seg_camad', 'eleccion.json').get('metricas_loeo_media', {}).get('recall', np.nan), 0)}%. Los experimentos más difíciles son el 11 (Matrigel) y el 12 (colágeno), con muchas células fuera de foco.</p>")
     s.append("</div>")
     s.append(figura("figuras/val_segmentacion_camad.png",
                     "<b>CAMAD: calidad de la segmentación.</b> Izquierda: recall y superposición según cuánto se reduce la imagen. Centro: recall por experimento con la configuración elegida, agrupado por sustrato. Derecha: cada punto es un experimento, versión anterior contra versión nueva."))
@@ -245,7 +290,8 @@ def seccion_bf(vbf):
     rel = csv("inferencia", "bf", "relacion_densidad.csv")
     het = csv("inferencia", "bf", "heterogeneidad_peliculas.csv")
     ncel = int(peli.n_segmentos.sum()) if peli is not None else 0
-    s.append(f"<p>Analizamos {ncel:,} trayectorias de al menos una hora en los 16 videos. Todas las cifras son el promedio entre videos, con su intervalo de confianza del 95%.".replace(",", ".") + "</p>")
+    s.append(f"<p>Analizamos {ncel:,} trayectorias de al menos una hora en los 16 videos".replace(",", ".") +
+             ". Todas las cifras son el promedio entre videos, con su intervalo de confianza del 95%.</p>")
     s.append("<h3>Rapidez y persistencia clásicas</h3>")
     s.append(f"<p>Las células avanzan a <b>{mic('bf', 'rapidez_um_min', 2, 'µm/min')}</b>. Según el modelo de caminata persistente, mantienen su dirección durante unos <b>{mic('bf', 'prw_P_min', 1, 'min')}</b>, con un error de posición de {mic('bf', 'prw_sigma_um', 2, 'µm')}. Como las imágenes están separadas 5 minutos, la dirección se conserva apenas durante 2 o 3 imágenes. A la escala de horas el movimiento es casi el de una caminata al azar: el exponente del MSD a tiempos largos es {mic('bf', 'alfa_largo', 2)} (1 sería completamente al azar).</p>")
     s.append("</div>")
@@ -277,11 +323,21 @@ def seccion_bf(vbf):
                        num=("med", "p_", "ph")))
     s.append('<h3>Movimiento coordinado entre vecinas y efecto de la densidad</h3><div class="texto">')
     s.append(f"<p>Dos células que están a menos de 25 µm (en la práctica, que se tocan) se mueven en direcciones más parecidas de lo que dicta el azar: el alineamiento de direcciones hasta 50 µm es {mic('bf', 'corr_dir_0_50um', 3)}, mientras que entre 100 y 200 µm es prácticamente cero. Siguiendo a Liu et al. (2021), también comparamos la evolución en el tiempo de la SE de pares de células vecinas y lejanas.</p>")
+    for ds_, nom in (("bf", "brightfield"), ("sirdna", "núcleos")):
+        prx = csv("inferencia", ds_, "pruebas_nulo.csv")
+        if prx is not None and prx.prueba.str.startswith("corr SE(t)").any():
+            rr = prx[prx.prueba.str.startswith("corr SE(t)")].iloc[0]
+            pe = csv(ds_, "estadisticas", "dist" if ds_ == "sirdna" else vbf, "por_pelicula.csv")
+            s.append(f"<p>Con {nom}, la correlación media entre las series de SE de vecinas es {f(pe.corr_se_vecinos.mean(), 3)} y la de pares lejanos {f(pe.corr_se_lejanos.mean(), 3)} (p Holm = {fp(rr.p_holm)}). " +
+                     ("La diferencia es significativa, aunque muy pequeña: las vecinas cambian de persistencia de forma apenas coordinada.</p>" if rr.p_holm < 0.05 else "No hay diferencia: en estos cultivos la persistencia de cada célula evoluciona de forma independiente de la de sus vecinas.</p>"))
     if rel is not None:
         sig = rel[rel.p_holm < 0.05]
         if len(sig):
             s.append("<p>Entre videos, la densidad de células se relaciona significativamente con: " +
-                     "; ".join(f"{NOMBRE.get(r.metrica, r.metrica)} (ρ = {f(r.rho_vs_densidad, 2)}, p Holm = {fp(r.p_holm)})" for _, r in sig.iterrows()) + ".</p>")
+                     "; ".join(f"{NOMBRE.get(r.metrica, r.metrica)} (ρ = {f(r.rho_vs_densidad, 2)}, p Holm = {fp(r.p_holm)})" for _, r in sig.iterrows()) + ".")
+            if "se_ventana_corr" in set(sig.metrica) and sig.set_index("metrica").loc["se_ventana_corr", "rho_vs_densidad"] > 0:
+                s.append(" En los videos más densos el movimiento es más aleatorio: las células chocan más a menudo con sus vecinas y cambian de rumbo con más frecuencia. La película 15, la más densa, es a la vez la más rápida y la de SE más alta (el movimiento más aleatorio de todas).")
+            s.append("</p>")
         else:
             s.append("<p>Con 16 videos, ninguna medida se relaciona significativamente con la densidad de células después de corregir por comparaciones múltiples (la tabla completa está en el anexo).</p>")
     if het is not None:
@@ -304,7 +360,7 @@ NOMBRE = {
     "se_wavelet_corr": "SE en el tiempo (corregida)", "ead1_cel": "EAD₁ por célula (cruda)", "ead1_cel_corr": "EAD₁ por célula (corregida)",
     "tl1_cel_mediana_min": "TL₁ por célula, mediana (min)", "ead1_ens": "EAD₁ del conjunto (cruda)",
     "ead1_ens_corr": "EAD₁ del conjunto (corregida)", "tl1_ens_min": "TL₁ del conjunto (min)",
-    "ead_t_pct_0_03": "% del tiempo con EAD < 0.3", "ead_t_pct_03_06": "% del tiempo con EAD 0.3–0.6",
+    "ead_t_pct_0_03": "% del tiempo con EAD &lt; 0.3", "ead_t_pct_03_06": "% del tiempo con EAD 0.3–0.6",
     "ead_t_pct_06_1": "% del tiempo con EAD ≥ 0.6", "corr_dir_0_50um": "Alineamiento con vecinas (0–50 µm)",
     "corr_dir_100_200um": "Alineamiento a 100–200 µm", "corr_se_vecinos": "Correlación de SE(t), vecinas",
     "corr_se_lejanos": "Correlación de SE(t), lejanas", "area_um2": "Área celular (µm²)", "aspect_ratio": "Alargamiento (largo/ancho)",
@@ -343,7 +399,7 @@ def seccion_bf_vs_nuc():
         malas = t[t.ccc_lin < 0.5].metrica.map(NOMBRE).tolist()
         sig = t[t.p_holm < 0.05]
         s.append(f"<p>Coinciden bien (concordancia de Lin ≥ 0.8) en: {', '.join(buenas) if buenas else 'ninguna'}. " +
-                 (f"Coinciden poco (concordancia < 0.5) en: {', '.join(malas)}. " if malas else "") +
+                 (f"Coinciden poco (concordancia &lt; 0.5) en: {', '.join(malas)}. " if malas else "") +
                  (f"Hay diferencias sistemáticas significativas en: " + "; ".join(f"{NOMBRE[r.metrica]} ({f(r['diferencia_relativa_%'], 0)}%)" for _, r in sig.iterrows()) + "." if len(sig) else "No hay diferencias sistemáticas significativas.") + "</p>")
         s.append("<p>La diferencia más importante es el <b>error de posición</b>: el centro del núcleo es un punto mucho más estable que el centro del contorno de toda la célula, que cambia de forma al moverse. Por eso las medidas de persistencia a pasos cortos salen algo más persistentes con los núcleos.</p>")
         t["bf"] = t.media_bf.map(lambda x: f(x, 3))
@@ -477,7 +533,7 @@ def seccion_rendimiento():
     s.append(f"<p><b>Alternativas factibles:</b></p><ul>"
              f"<li><b>Que la Pi solo adquiera y envíe cada imagen a la PC por la red.</b> Una imagen de 2 MB tarda una fracción de segundo por cable, y la PC la procesa en {seg(bf['pc_gpu_fp16_s'] + bf['otros_pasos_pc_s'])}, así que el análisis podría ir en tiempo real incluso con intervalos de 30 s. Es la opción recomendada.</li>"
              f"<li><b>Procesar todo al terminar el experimento</b> en la PC: los 1600 cuadros de brightfield tardan unos {seg(1600 * (bf['pc_gpu_fp16_s'] + bf['otros_pasos_pc_s']))} con la GPU. En la Pi tardarían unos {f(1600 * bf['pi5_s'] / 86400, 0)} días.</li>"
-             f"<li><b>Usar un modelo más liviano en la Pi</b>, como Cellpose 3 (una red U-Net unas 50–100 veces más barata), o un acelerador de IA para la Pi 5 (AI HAT+). Serían del orden de segundos por imagen, pero habría que volver a validar la calidad de la segmentación con las mismas referencias de este reporte, y convertir el modelo al formato del acelerador no es trivial.</li></ul>")
+             f"<li><b>Usar un modelo más liviano en la Pi</b>, como Cellpose 3, que hace unas 15–20 veces menos operaciones por píxel (sección 3). En esta PC es unas 5 veces más rápido en CPU, así que en la Pi 5 tardaría del orden de 3–5 minutos por imagen: justo en el límite para fotos cada 5 minutos e inviable cada 30 s. Además segmenta peor en nuestras imágenes (F1 0.81 contra 0.86). Un acelerador de IA para la Pi 5 (AI HAT+) podría bajar ese tiempo a segundos, pero habría que convertir el modelo a su formato y volver a validarlo.</li></ul>")
     s.append("</div>")
     return "\n".join(s)
 
@@ -545,7 +601,7 @@ def hallazgos(vbf, vca):
     """Lista de lo más importante, armada con los números."""
     h = []
     el = js("validacion_seg_bf", "eleccion.json")
-    ea = js("validacion_seg_camad", "eleccion_aplicada.json")
+    ea = camad_aplicada()
     g = csv("validacion_seg_camad", "grilla.csv")
     r = csv("validacion_tracking", "por_pelicula.csv")
     et = js("validacion_tracking", "eleccion.json")
@@ -554,7 +610,7 @@ def hallazgos(vbf, vca):
         h.append(f"<b>Las mediciones ahora están validadas.</b> Comparando con los núcleos fluorescentes del mismo campo, la detección de células en brightfield acierta con F1 = {f(el['metricas_loeo_media']['f1'], 2)} y el {f(100 * m[et['elegida']], 1)}% de las uniones entre imágenes del seguimiento son correctas.")
     if g is not None and ea:
         full = g[g.escala == 1].groupby("exp").recall.mean().mean()
-        h.append(f"<b>La segmentación de CAMAD mejoró de {f(100 * full, 0)}% a {f(100 * ea['recall'], 0)}%</b> de células encontradas, al trabajar las imágenes a una escala adecuada para el modelo.")
+        h.append(f"<b>La segmentación de CAMAD mejoró de {f(100 * full, 1)}% a {f(100 * ea['recall'], 1)}%</b> de células encontradas, al trabajar las imágenes a una escala adecuada para el modelo.")
     rb = fila_resumen("bf", "prw_P_min")
     if rb is not None:
         h.append(f"<b>Las MDA-MB-231 son rápidas pero poco persistentes:</b> avanzan a {mic('bf', 'rapidez_um_min', 2, 'µm/min')} y mantienen la dirección unos {f(rb.media, 0)} minutos. A la escala de horas se mueven casi como una caminata al azar.")
@@ -565,8 +621,9 @@ def hallazgos(vbf, vca):
     h.append("<b>Aporte metodológico:</b> sin corrección, la entropía de una célula depende de la longitud de su trayectoria. Lo corregimos, y las simulaciones muestran que el error de posición limita cuánta persistencia se puede detectar con imágenes cada 5 minutos.")
     t = csv("inferencia", "bf_vs_nucleos.csv")
     if t is not None:
-        buenas = (t.ccc_lin >= 0.8).sum()
-        h.append(f"<b>El análisis sin marcador reproduce al de núcleos</b> en {buenas} de {len(t)} medidas con concordancia alta. Las diferencias se concentran en las medidas más sensibles al error de posición.")
+        t = t.set_index("metrica")
+        cos_b, cos_n = t.loc["cos_giro_medio", "media_bf"], t.loc["cos_giro_medio", "media_nucleos"]
+        h.append(f"<b>Medir células o núcleos da la misma imagen general, con una diferencia instructiva.</b> La rapidez coincide bien entre ambos métodos (concordancia {f(t.loc['rapidez_um_min', 'ccc_lin'], 2)}). En cambio, con los núcleos, cuya posición «tiembla» menos, se detecta casi el doble de persistencia entre pasos (coseno medio del giro {f(cos_n, 2)} contra {f(cos_b, 2)}), y aparece una correlación débil pero estadísticamente significativa entre la persistencia de células vecinas, que con brightfield no llega a verse.")
     omni = csv("inferencia", "camad", "omnibus_experimentos.csv")
     if omni is not None:
         sig = omni[omni.anova_perm_p_holm < 0.05]
@@ -586,6 +643,7 @@ def main():
     tpl = (Path(__file__).resolve().parent / "plantillas" / "reporte.html").read_text()
     rep = {
         "FECHA": fecha, "HALLAZGOS": hallazgos(vbf, vca), "TARJETAS_DATOS": tarjetas_datos(),
+        "CELLPOSE": seccion_cellpose(),
         "VALIDACION": seccion_validacion(), "SIMULACIONES": seccion_simulaciones(),
         "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "RESULTADOS_CAMAD": seccion_camad(vca),
         "RESULTADOS_WHAD": seccion_whad(), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,

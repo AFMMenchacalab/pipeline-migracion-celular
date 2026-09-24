@@ -38,10 +38,17 @@ el tracking los trata como tiempo perdido (`10_preparar_camad.py`).
    exactamente un núcleo. Se barren los umbrales, se elige por F1 con
    validación cruzada dejando una película afuera, y se reportan
    precisión, recall, fusiones y células perdidas
-   (`resultados/v2/validacion_seg_bf/`).
+   (`resultados/v2/validacion_seg_bf/`). El máximo F1 (cellprob −1,
+   flow 0.8: 0.8637) empató con los umbrales por defecto (0, 0.4: 0.8630),
+   una diferencia de 1/50 del desvío entre películas. Regla de desempate:
+   diferencias de F1 menores que 0.1 × SD se consideran empate y gana la
+   opción de mayor precisión (0.90 contra 0.85, con la mitad de células
+   sin núcleo), porque para medir movimiento un objeto falso crea una
+   trayectoria falsa. Resultado: **se mantienen los umbrales por defecto**,
+   ahora con evidencia.
 4. **CAMAD a resolución reducida 4×.** A resolución completa (lo que hacía
-   v1) Cellpose-SAM recupera el 62% de las células anotadas (IoU medio 0.55).
-   Reduciendo 4× (0.47 µm/px, similar a BF) recupera el 87% (IoU 0.72),
+   v1) Cellpose-SAM recupera el 62.5% de las células anotadas (IoU medio 0.55).
+   Reduciendo 4× (0.47 µm/px, similar a BF) recupera el 87.2% (IoU 0.72),
    promediando los 16 experimentos. Los más difíciles son exp11 y exp12, con
    células fuera de foco. Se barrieron las escalas 1, 2,
    4 y 6× y los umbrales, con validación cruzada por experimento

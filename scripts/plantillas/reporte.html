@@ -160,7 +160,7 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 
 <section id="datos">
   <h2><span class="num">2</span>Los datos</h2>
-  <p class="texto">Trabajamos con cuatro conjuntos de videos públicos. Dos de ellos son nuevos respecto de la versión anterior del análisis.</p>
+  <p class="texto">Trabajamos con cuatro conjuntos de videos públicos. Tres se incorporan en esta versión del análisis; CAMAD ya se había usado antes, pero solo para comprobar la segmentación.</p>
   <div class="rejilla-datos">
 {{TARJETAS_DATOS}}
   </div>
@@ -176,6 +176,7 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <li><span class="n">4</span><div><b>Calcular las medidas de movimiento</b> de cada célula y de cada video: rapidez, persistencia, entropías, forma celular y coordinación entre vecinas.</div></li>
     <li><span class="n">5</span><div><b>Resumir y comparar con la estadística correcta.</b> La unidad independiente es el video (o el experimento), no la célula: las células de un mismo video comparten condiciones y se influyen entre sí. Por eso cada número poblacional se calcula dentro de cada video y después se promedia entre videos, con intervalos de confianza por remuestreo (bootstrap).</div></li>
   </ol>
+{{CELLPOSE}}
   <figure>
     <div class="placa"><img src="figuras/bf_trayectorias.png" alt="Trayectorias de células sobre tres campos de microscopio" loading="lazy"></div>
     <figcaption><b>Trayectorias sobre la primera imagen de tres videos.</b> Cada línea es una célula seguida al menos 100 minutos. La película 15 (derecha) es mucho más densa que el resto: allí las células se tocan y se empujan.</figcaption>
@@ -300,7 +301,7 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 </section>
 
 <footer>
-  Generado automáticamente a partir de <span class="mono">resultados/v2/</span> por <span class="mono">scripts/23_reporte_html.py</span> · {{FECHA}}. Referencias: Liu Y. et al., Biophys J 120:2552 (2021), doi:10.1016/j.bpj.2021.04.026 · Liu Y. et al., Biophys J 123:730 (2024), doi:10.1016/j.bpj.2024.02.010 · Iheme L.O. et al., IEEE Data Descriptions 1:95 (2024), doi:10.1109/IEEEDATA.2024.3481394 · Stringer C. et al., Cellpose · Fukai Y.T. y Kawaguchi K., laptrack · Torrence C. y Compo G.P., Bull Am Meteorol Soc 79:61 (1998) · Maiuri P. et al., Cell 161:374 (2015).
+  Generado automáticamente a partir de <span class="mono">resultados/v2/</span> por <span class="mono">scripts/23_reporte_html.py</span> · {{FECHA}}. Referencias: Liu Y. et al., Biophys J 120:2552 (2021), doi:10.1016/j.bpj.2021.04.026 · Liu Y. et al., Biophys J 123:730 (2024), doi:10.1016/j.bpj.2024.02.010 · Iheme L.O. et al., IEEE Data Descriptions 1:95 (2024), doi:10.1109/IEEEDATA.2024.3481394 · Stringer C. y Pachitariu M., Cellpose3, Nat Methods (2025) · Pachitariu M., Rariden M. y Stringer C., Cellpose-SAM, bioRxiv (2025) · Kirillov A. et al., Segment Anything, ICCV (2023) · Fukai Y.T. y Kawaguchi K., laptrack · Torrence C. y Compo G.P., Bull Am Meteorol Soc 79:61 (1998) · Maiuri P. et al., Cell 161:374 (2015).
 </footer>
 </main>
 </div>

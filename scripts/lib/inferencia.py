@@ -101,6 +101,10 @@ def modelo_mixto(df, y, grupo_col, ref, exp_col="movie"):
     d = d.rename(columns={y: "y", grupo_col: "g", exp_col: "e"})
     if d["g"].nunique() < 2 or len(d) < 10:
         return None
+    # se ajusta sobre la variable estandarizada (el optimizador de statsmodels
+    # no converge con varianzas del orden de 1e-4) y se vuelve a la escala original
+    mu, sd = d["y"].mean(), d["y"].std()
+    d["y"] = (d["y"] - mu) / sd
     try:
         m = smf.mixedlm(f"y ~ C(g, Treatment('{ref}'))", d, groups=d["e"]).fit(reml=True, method="lbfgs")
     except Exception:
@@ -111,22 +115,28 @@ def modelo_mixto(df, y, grupo_col, ref, exp_col="movie"):
         if not nombre.startswith("C(g"):
             continue
         cond = nombre.split("[T.")[-1].rstrip("]")
-        filas.append({"metrica": y, "condicion": cond, "vs": ref, "diferencia": m.params[nombre],
-                      "ic95_inf": ci.loc[nombre, 0], "ic95_sup": ci.loc[nombre, 1], "p": m.pvalues[nombre]})
-    var_exp = float(m.cov_re.iloc[0, 0]) if m.cov_re.size else np.nan
-    return pd.DataFrame(filas), var_exp, float(m.scale)
+        filas.append({"metrica": y, "condicion": cond, "vs": ref, "diferencia": m.params[nombre] * sd,
+                      "ic95_inf": ci.loc[nombre, 0] * sd, "ic95_sup": ci.loc[nombre, 1] * sd, "p": m.pvalues[nombre],
+                      "convergio": bool(m.converged)})
+    var_exp = float(m.cov_re.iloc[0, 0]) * sd ** 2 if m.cov_re.size else np.nan
+    return pd.DataFrame(filas), var_exp, float(m.scale) * sd ** 2
 
 
 def icc_peliculas(df, y, exp_col="movie"):
-    """Fracción de la varianza (por célula) explicada por la película
-    (correlación intraclase de un modelo de intercepto aleatorio)."""
-    import statsmodels.formula.api as smf
-    d = df[[y, exp_col]].dropna().rename(columns={y: "y", exp_col: "e"})
-    if d["e"].nunique() < 3:
+    """Fracción de la varianza (por célula) explicada por la película:
+    ICC(1) de un ANOVA de una vía con efectos aleatorios, estimador de
+    momentos (robusto; el ajuste REML de statsmodels no convergía con
+    varianzas tan chicas como las de la EAD y devolvía 0):
+        ICC = (MSB - MSW) / (MSB + (k0 - 1) MSW)
+    con k0 el tamaño de grupo ajustado por desbalance."""
+    d = df[[y, exp_col]].dropna()
+    g = d.groupby(exp_col)[y]
+    n_i = g.size().to_numpy(float)
+    if len(n_i) < 3:
         return np.nan
-    try:
-        m = smf.mixedlm("y ~ 1", d, groups=d["e"]).fit(reml=True, method="lbfgs")
-        vb = float(m.cov_re.iloc[0, 0])
-        return vb / (vb + float(m.scale))
-    except Exception:
-        return np.nan
+    N, a = n_i.sum(), len(n_i)
+    media = d[y].mean()
+    msb = (n_i * (g.mean().to_numpy() - media) ** 2).sum() / (a - 1)
+    msw = ((d[y] - g.transform("mean")) ** 2).sum() / (N - a)
+    k0 = (N - (n_i ** 2).sum() / N) / (a - 1)
+    return float(max(0.0, (msb - msw) / (msb + (k0 - 1) * msw)))

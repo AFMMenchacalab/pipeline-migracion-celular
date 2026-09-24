@@ -43,15 +43,20 @@ def fig_val_seg_bf():
     g = pd.read_csv(d / "grilla.csv")
     fig, axs = plt.subplots(1, 3, figsize=(13, 3.8))
     piv = rk.pivot(index="cellprob", columns="flow", values="f1")
-    im = axs[0].imshow(piv.values, cmap=S.CMAP_SEQ, aspect="auto", origin="lower")
+    # escala de color desde 0.78: la combinación sin control de flujo y cellprob
+    # bajo da un F1 muy bajo que, si no, aplasta la escala del resto
+    vals = piv.values
+    vmin = max(0.78, np.nanmin(vals))
+    im = axs[0].imshow(np.clip(vals, vmin, None), cmap=S.CMAP_SEQ, aspect="auto", origin="lower", vmin=vmin,
+                       vmax=np.nanmax(vals))
     axs[0].set_xticks(range(len(piv.columns)), [("sin control" if c == 0 else f"{c}") for c in piv.columns])
     axs[0].set_yticks(range(len(piv.index)), piv.index)
     axs[0].set_xlabel("flow_threshold")
     axs[0].set_ylabel("cellprob_threshold")
     for i in range(piv.shape[0]):
         for j in range(piv.shape[1]):
-            axs[0].text(j, i, f"{piv.values[i, j]:.3f}", ha="center", va="center", fontsize=7,
-                        color="white" if piv.values[i, j] > np.nanmean(piv.values) else S.TINTA)
+            axs[0].text(j, i, f"{vals[i, j]:.3f}", ha="center", va="center", fontsize=7,
+                        color="white" if vals[i, j] > (vmin + np.nanmax(vals)) / 2 else S.TINTA)
     axs[0].set_title("F1 vs núcleos (media de 16 películas)")
     axs[0].grid(False)
     fig.colorbar(im, ax=axs[0], fraction=0.046)
@@ -141,7 +146,7 @@ def fig_val_tracking():
         grupos = [df[df.variante == v][met] for v in vs]
         S.puntos_con_media(ax, grupos, vs, ic=[bootstrap_ic(x) for x in grupos])
         ax.set_title(tit)
-    fig.suptitle(f"Tracking BF vs tracking de núcleos (16 películas). Elegida: {el['elegida']}", y=1.02)
+    fig.suptitle(f"Tracking BF vs tracking de núcleos (16 películas). Elegida: {el['elegida']}")
     S.guardar(fig, FIG / "val_tracking")
 
 
@@ -329,12 +334,13 @@ def fig_colectivo(ds, var):
     axs[1].set_xticks(x, ["vecinas (< 60 µm)", "lejanas (> 200 µm)"])
     axs[1].set_ylabel("Spearman medio entre SE(t)")
     axs[1].set_title("Correlación de SE(t) entre pares (Liu 2021)")
-    axs[2].scatter(peli.rapidez_um_min, peli.rho_rapidez_cosgiro, c=peli.densidad_cel_mm2, cmap=S.CMAP_SEQ,
-                   s=30, edgecolor=S.TINTA2, linewidth=0.5)
+    sc = axs[2].scatter(peli.rapidez_um_min, peli.rho_rapidez_cosgiro, c=peli.densidad_cel_mm2, cmap=S.CMAP_SEQ,
+                        s=30, edgecolor=S.TINTA2, linewidth=0.5)
+    fig.colorbar(sc, ax=axs[2], fraction=0.046, label="densidad (células/mm²)")
     axs[2].axhline(0, color=S.TINTA2, lw=0.8)
     axs[2].set_xlabel("rapidez media (µm/min)")
     axs[2].set_ylabel("ρ(rapidez, cos giro)")
-    axs[2].set_title("Acoplamiento rapidez–persistencia (color = densidad)")
+    axs[2].set_title("Acoplamiento rapidez–persistencia por réplica")
     S.guardar(fig, FIG / f"{ds}_colectivo_acoplamiento")
 
 
@@ -402,7 +408,7 @@ def fig_bf_vs_nuc(var_bf, var_nuc):
         ax.set_xlabel("núcleos (SiR-DNA)")
         ax.set_ylabel("brightfield")
         ax.set_title(f"{lab}\nCCC={ccc_lin(x, y):.2f}", fontsize=8)
-    fig.suptitle("¿Cambian los estadísticos si se usa el pipeline sin marcador? (1 punto = 1 película)", y=1.01)
+    fig.suptitle("¿Cambian los estadísticos si se usa el pipeline sin marcador? (1 punto = 1 película)")
     S.guardar(fig, FIG / "bf_vs_nucleos")
 
 
@@ -468,7 +474,7 @@ def fig_camad_tiempo(var):
         axs[0, j].set_title(c, fontsize=9)
         axs[0, j].legend(fontsize=6)
         axs[2, j].set_xlabel("tiempo desde el inicio (h)")
-    fig.suptitle("CAMAD: evolución durante las 5 h (adhesión y esparcimiento en medio sin suero)", y=1.0)
+    fig.suptitle("CAMAD: evolución durante las 5 h (adhesión y esparcimiento en medio sin suero)")
     S.guardar(fig, FIG / "camad_tiempo")
 
 
