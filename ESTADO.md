@@ -10,7 +10,10 @@ Detalle de cada cambio y su porqué: `CAMBIOS_v2.md`. Cómo correrlo: `README.md
 (`bash scripts/correr_v2.sh`). Repositorio (privado):
 https://github.com/AFMMenchacalab/pipeline-migracion-celular
 **Reporte (HTML, privado; compartir desde "Share"): https://claude.ai/artifact/RHbrMPzxEw9b8xRXrHTiDS**
-Copia local: `resultados/v2/reporte_html/index.html`.
+Copia local: `resultados/v2/reporte_html/index.html`; versión sin conexión en
+`resultados/v2/reporte_migracion_v2.zip` y como descarga en la release
+https://github.com/AFMMenchacalab/pipeline-migracion-celular/releases/tag/reporte-2026-09-25
+(el 2026-09-24 a las 04:30 Syncthing aún no había copiado el reporte a la laptop, que estaba apagada).
 
 ### Datos nuevos
 - [x] Núcleos SiR-DNA de los mismos 1600 campos BF (Zenodo 10074471, MD5 verificado) -> referencia
@@ -41,6 +44,10 @@ Copia local: `resultados/v2/reporte_html/index.html`.
   también la bajan) -> leerla junto con <cos giro>.
 - Linajes (prototipo): 93 divisiones con núcleos, ~50% reales a ojo; etiquetas 12 -> 12.1/12.2 y árboles.
 - Rendimiento: 1.8 s/imagen en GPU; Raspberry Pi 5 ~21 min/imagen (no factible entre fotos).
+- α del MSD por réplica: BF superdifusivo a 5-30 min en las 16 películas (1.13-1.32), ~1 a escala de horas;
+  CAMAD: confinamiento sobre vidrio (MSD se aplana), subdifusivo en matriz dispersa, 1.0-1.8 en Matrigel/colágeno.
+- Forma vs movimiento (dentro de cada película): células más alargadas = más rápidas y persistentes
+  (rho 0.27 con rapidez, p Holm < 0.001), confirmado con núcleos.
 
 ### Pendiente / decisiones para el usuario
 - [ ] Compartir el reporte (Share) con quien corresponda antes del viernes.
