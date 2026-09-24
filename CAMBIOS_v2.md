@@ -181,6 +181,22 @@ Etiquetas jerárquicas (12 → 12.1 / 12.2), árboles y video.
   redondeadas y cromatina muy condensada para no confundir G2 con mitosis.
 - Todos se agregan a `correr_v2.sh` (parte `reporte`).
 
+## 4d. Microscopio propio: recepción y segmentación en vivo
+
+- `31_receptor_microscopio.py`: recibe por HTTP cada imagen que manda la
+  Raspberry Pi (MicroscopeOS, rama `feature/usb-envio-pc`). **Por qué
+  HTTP y no Syncthing:** control explícito de integridad (SHA-256 antes de
+  renombrar, así el segmentador nunca lee un archivo a medias) y reenvío
+  sin duplicados tras un corte de red. Solo biblioteca estándar y clave
+  compartida.
+- `32_segmentar_en_vivo.py`: carga Cellpose-SAM una vez (fp16) y segmenta
+  cada ciclo en cuanto están sus cuatro fotos DPC. **Por qué reducir 2×:**
+  0.43 µm/px sigue por debajo de la resolución óptica del 20x (~0.6 µm) y
+  es ~4× más rápido. La imagen de entrada (`suma`, `dpc` o `combinada`)
+  queda como opción hasta decidirla en el piloto contra contornos a mano.
+- Probado con un timelapse simulado y un corte de red: 14/14 archivos
+  recibidos, reenvío sin duplicados, ~1.6 s por ciclo a 1024×1024.
+
 ## 5. Rendimiento
 
 - GPU: fp16 más lectura/escritura en hilos. La segmentación BF pasa de
