@@ -1,0 +1,16 @@
+# Datos crudos (decenas de GB; se descargan de Zenodo, ver README)
+datasets/
+# Entorno virtual (se recrea con requirements.txt en cada PC)
+venv/
+# Resultados generados por el pipeline (se regeneran con scripts/correr_v2.sh)
+resultados/
+# Salidas de herramientas locales
+graphify-out/
+.graphifyignore
+.claude/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.stfolder/
+.stversions/
+*.sync-conflict-*
