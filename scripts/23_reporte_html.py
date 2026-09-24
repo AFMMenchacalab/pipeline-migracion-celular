@@ -50,6 +50,12 @@ def fp(p):
     return "&lt; 0.001" if p < 0.001 else f"{p:.3f}"
 
 
+def peq(p):
+    """'= 0.012' o '&lt; 0.001' (para escribir «p Holm = 0.012» / «p Holm < 0.001»)."""
+    v = fp(p)
+    return v if v.startswith("&lt;") else f"= {v}"
+
+
 def js(*partes):
     p = RES.joinpath(*partes)
     return json.loads(p.read_text()) if p.exists() else {}
@@ -202,7 +208,7 @@ def seccion_cellpose():
     s.append("<p><b>Por qué es mejor Cellpose-SAM para este trabajo.</b> Primero, la atención le permite usar el contexto de todo el bloque y no solo el vecindario inmediato. Eso ayuda a decidir dónde termina una célula y empieza otra cuando se tocan o cuando el borde es tenue, como en brightfield. Segundo, el preentrenamiento de SAM le da una noción general de qué es un «objeto». Por eso, según sus autores, generaliza a tipos de imagen que no vio al entrenarse con una precisión comparable a la de anotadores humanos (Pachitariu, Rariden y Stringer, 2025). Tercero, al no depender del diámetro ni del orden de los canales, el mismo modelo sirve sin ajustes para brightfield, fluorescencia de núcleos y contraste de fase, que son las tres modalidades de este trabajo.</p>")
     if c:
         a, b = c["cellpose3"], c["cellpose_sam"]
-        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p = {fp(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 12).</p>")
+        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p {peq(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 13).</p>")
     s.append("</div>")
     return "\n".join(s)
 
@@ -300,6 +306,7 @@ def seccion_bf(vbf):
                                   "ead1_cel_corr", "tl1_ens_min", "tl1_cel_mediana_min", "se_fps_completa", "se_ventana_corr",
                                   "se_wavelet_corr", "ead_t_pct_06_1", "corr_dir_0_50um", "area_um2", "aspect_ratio",
                                   "densidad_cel_mm2"]))
+    s.append(seccion_alfa("bf", vbf))
     s.append(figura("figuras/bf_msd_vacf_fps.png",
                     "<b>Cómo se alejan las células de su punto de partida.</b> Izquierda: MSD de cada video (gris) y promedio (azul), con las rectas de movimiento al azar (α = 1) y en línea recta (α = 2), y el ajuste del modelo persistente (naranja). Centro: cuánto se parece la velocidad a la de un tiempo atrás; cae a casi cero en 10–20 minutos. Derecha: espectro de la velocidad."))
     s.append('<h3>Entropías</h3><div class="texto">')
@@ -328,13 +335,13 @@ def seccion_bf(vbf):
         if prx is not None and prx.prueba.str.startswith("corr SE(t)").any():
             rr = prx[prx.prueba.str.startswith("corr SE(t)")].iloc[0]
             pe = csv(ds_, "estadisticas", "dist" if ds_ == "sirdna" else vbf, "por_pelicula.csv")
-            s.append(f"<p>Con {nom}, la correlación media entre las series de SE de vecinas es {f(pe.corr_se_vecinos.mean(), 3)} y la de pares lejanos {f(pe.corr_se_lejanos.mean(), 3)} (p Holm = {fp(rr.p_holm)}). " +
+            s.append(f"<p>Con {nom}, la correlación media entre las series de SE de vecinas es {f(pe.corr_se_vecinos.mean(), 3)} y la de pares lejanos {f(pe.corr_se_lejanos.mean(), 3)} (p Holm {peq(rr.p_holm)}). " +
                      ("La diferencia es significativa, aunque muy pequeña: las vecinas cambian de persistencia de forma apenas coordinada.</p>" if rr.p_holm < 0.05 else "No hay diferencia: en estos cultivos la persistencia de cada célula evoluciona de forma independiente de la de sus vecinas.</p>"))
     if rel is not None:
         sig = rel[rel.p_holm < 0.05]
         if len(sig):
             s.append("<p>Entre videos, la densidad de células se relaciona significativamente con: " +
-                     "; ".join(f"{NOMBRE.get(r.metrica, r.metrica)} (ρ = {f(r.rho_vs_densidad, 2)}, p Holm = {fp(r.p_holm)})" for _, r in sig.iterrows()) + ".")
+                     "; ".join(f"{NOMBRE.get(r.metrica, r.metrica)} (ρ = {f(r.rho_vs_densidad, 2)}, p Holm {peq(r.p_holm)})" for _, r in sig.iterrows()) + ".")
             if "se_ventana_corr" in set(sig.metrica) and sig.set_index("metrica").loc["se_ventana_corr", "rho_vs_densidad"] > 0:
                 s.append(" En los videos más densos el movimiento es más aleatorio: las células chocan más a menudo con sus vecinas y cambian de rumbo con más frecuencia. La película 15, la más densa, es a la vez la más rápida y la de SE más alta (el movimiento más aleatorio de todas).")
             s.append("</p>")
@@ -347,6 +354,14 @@ def seccion_bf(vbf):
     s.append(figura("figuras/bf_colectivo_acoplamiento.png",
                     "<b>Coordinación entre células.</b> Izquierda: cuánto se parecen las direcciones de dos células según la distancia que las separa. Centro: correlación entre las series de SE de pares vecinos y lejanos; cada línea es un video. Derecha: acoplamiento entre rapidez y persistencia en cada video, coloreado por densidad."))
     s.append(figura("figuras/bf_vs_densidad.png", "<b>Medidas de cada video según su densidad de células.</b> El número junto a cada punto identifica el video."))
+    rel = csv("inferencia", "bf", "relacion_densidad.csv")
+    if rel is not None:
+        t = rel.copy()
+        t["m"] = t.metrica.map(NOMBRE)
+        t["r"] = t.rho_vs_densidad.map(lambda x: f(x, 2))
+        t["ph"] = [f'<span class="{"sig" if p < 0.05 else "nosig"}">{fp(p)}</span>' for p in t.p_holm]
+        s.append(tabla(t, ["m", "r", "ph"], ["Medida", "ρ con la densidad (entre películas)", "p Holm"], num=("r", "ph")))
+    s.append(seccion_forma("bf"))
     return "\n".join(s)
 
 
@@ -415,6 +430,7 @@ def seccion_bf_vs_nuc():
         s.append("</div>")
     s.append(figura("figuras/bf_vs_nucleos.png",
                     "<b>La misma medida calculada con células y con núcleos.</b> Cada punto es un video; si ambos métodos coincidieran exactamente, los puntos estarían sobre la línea punteada."))
+    s.append(seccion_nucleos_detalle())
     return "\n".join(s)
 
 
@@ -491,6 +507,8 @@ def seccion_camad(vca):
         s.append('<details><summary>Análisis por célula: diferencia de cada sustrato respecto de vidrio (modelo mixto u OLS con errores agrupados por experimento; con solo 2 experimentos de vidrio, las p son optimistas)</summary>')
         s.append(tabla(t, ["m", "condicion", "d", "ph"], ["Medida", "Sustrato", "Diferencia [IC95%]", "p Holm"], num=("d", "ph")))
         s.append("</details>")
+    s.append(seccion_alfa("camad", vca))
+    s.append(seccion_forma("camad"))
     s.append(figura("figuras/camad_tiempo.png",
                     "<b>Qué pasa durante las 5 horas.</b> Cada línea es un experimento. Fila superior: rapidez. Centro: área de las células, que crece a medida que se aplanan sobre el sustrato. Abajo: EAD corregida en ventanas de una hora."))
     s.append(figura("figuras/camad_sensibilidad_paso.png",
@@ -513,6 +531,158 @@ def seccion_whad():
     s.append("</div>")
     s.append(figura("figuras/whad_cierre.png",
                     "<b>Cierre de herida.</b> Izquierda: área de la herida relativa a la inicial; las líneas finas son posiciones y las gruesas el promedio por condición. Derecha: células o grupos desprendidos por imagen. MCF10A: CC control, NC Notch1 activo, C61 sin CYR61, N61 ambos. MCF7: LacZ control, SEMA6D sobreexpresado."))
+    return "\n".join(s)
+
+def seccion_alfa(ds, var):
+    """Régimen de movimiento por réplica: MSD de cada una y sus alfa."""
+    pe = csv(ds, "estadisticas", var, "por_pelicula.csv")
+    ce = csv(ds, "estadisticas", var, "por_celula.csv")
+    if pe is None:
+        return ""
+    s = ['<h3>Régimen de movimiento en cada réplica: el exponente α del MSD</h3><div class="texto">',
+         "<p>El exponente α describe cómo crece la distancia recorrida con el tiempo: en un gráfico log-log del MSD es la pendiente. α = 1 corresponde a una caminata al azar (difusiva); α = 2, a un movimiento en línea recta (balístico); entre 1 y 2 el movimiento es <b>superdifusivo</b> (persistente) y por debajo de 1 es <b>subdifusivo</b> (confinado o frenado). Lo medimos de tres formas: en cada réplica a escala corta y larga, célula por célula, y como «α local» a cada escala de tiempo.</p>"]
+    if ds == "bf":
+        m13 = pe.set_index("movie").loc[13]
+        s.append(f"<p>En las 16 películas el α a escala corta (5–30 min) está entre {f(pe.alfa_corto.min())} y {f(pe.alfa_corto.max())}: todas son superdifusivas, como corresponde a células que mantienen su dirección durante varios minutos. A escala larga (1–4 h) el α baja, entre {f(pe.alfa_largo.min())} y {f(pe.alfa_largo.max())}, y el α local muestra el cruce de régimen: sube hasta ~1.3 alrededor de 20–40 min y cae hacia 1 después de ~2 h, que es exactamente lo que predice el modelo de caminata persistente. Célula por célula, la mediana de α por película va de {f(pe.alfa_celula_mediana.min())} a {f(pe.alfa_celula_mediana.max())}; en promedio el {f(100 * pe.frac_celulas_superdifusivas.mean(), 0)}% de las células es claramente superdifusiva (α > 1.2) y el {f(100 * pe.frac_celulas_subdifusivas.mean(), 0)}% subdifusiva (α < 0.8). La película 13, la de menor densidad y menor rapidez, se aparta del resto: α largo {f(m13.alfa_largo)} y {f(100 * m13.frac_celulas_subdifusivas, 0)}% de células subdifusivas (su MSD se curva hacia abajo a tiempos largos).</p>")
+        s.append("<p>Un α largo algo mayor que 1 (1.1–1.3) en casi todas las películas puede reflejar persistencia de largo plazo, pero también un sesgo conocido: a tiempos largos solo aportan las células que permanecen muchas horas en el campo y se siguieron sin cortes, que tienden a ser las más persistentes. Por eso el α largo se interpreta con cautela.</p>")
+    elif ds == "camad":
+        s.append("<p>En CAMAD el α es más informativo que el modelo de caminata persistente, porque varias condiciones no se comportan como una caminata persistente. <b>Sobre vidrio</b> el MSD se aplana a los ~30–60 minutos: las células se bambolean en su lugar dentro de un radio de pocos micrómetros, sin migrar (α largo ≤ 0.7 y entre 67% y 100% de células subdifusivas). <b>Sobre la matriz dispersa</b> el movimiento es subdifusivo (α ≈ 0.6), coherente con una población mayormente inmóvil. <b>Sobre Matrigel, colágeno y la matriz confluente</b> el α largo está entre 1.0 y 1.8: las células migran, y en algunos experimentos (exp6, exp11, exp3, exp7) de forma claramente dirigida. En los seis experimentos con Matrigel o colágeno el α largo es mayor que en los dos de vidrio (prueba exacta a nivel de experimento, p = 0.036). A escala corta (0.5–5 min) el α es menor que 1 en casi todos: a esa escala domina el error de posición.</p>")
+    else:
+        s.append(f"<p>Con los núcleos el patrón es el mismo que con las células completas: α corto entre {f(pe.alfa_corto.min())} y {f(pe.alfa_corto.max())} y α largo entre {f(pe.alfa_largo.min())} y {f(pe.alfa_largo.max())}.</p>")
+    s.append("</div>")
+    nombre = {"bf": "Brightfield", "sirdna": "Núcleos", "camad": "CAMAD"}[ds]
+    s.append(figura(f"figuras/{ds}_msd_por_replica.png", f"<b>{nombre}: el MSD de cada réplica por separado</b> (escala log-log). Puntos: datos; naranja: ajuste del modelo de caminata persistente con error de posición; líneas punteadas: ajuste de α a escala corta (negro) y larga (verde). En el título de cada panel, los valores de esa réplica."))
+    s.append(figura(f"figuras/{ds}_alfa.png", f"<b>{nombre}: α por réplica, por célula y a cada escala de tiempo.</b> Izquierda: α corto y largo de cada réplica. Centro: distribución del α de cada célula en cada réplica (caja: cuartiles; bigotes: 1.5 veces el rango intercuartil). Derecha: α local según τ para cada réplica (gris) y el promedio (azul); las líneas punteadas marcan α = 1 y α = 2."))
+    return "\n".join(s)
+
+
+def seccion_forma(ds):
+    t = csv("inferencia", ds, "forma_movimiento.csv")
+    if t is None or not len(t):
+        return ""
+    t = t.set_index(["forma", "movimiento"])
+    g = lambda a, b: t.loc[(a, b)]
+    s = ['<h3>¿La forma de la célula predice cómo se mueve?</h3><div class="texto">']
+    if ds in ("bf", "sirdna"):
+        r1, r2, r3 = g("aspect_ratio", "rapidez_um_min"), g("aspect_ratio", "ead1_corr"), g("circularidad", "rapidez_um_min")
+        s.append(f"<p>Para cada célula comparamos su forma media con su movimiento, calculando la correlación <i>dentro</i> de cada película y usando las películas como réplicas; así una diferencia entre campos no se confunde con una relación real. Resultado: <b>las células más alargadas se mueven más rápido y con más persistencia</b>. La correlación de Spearman entre alargamiento y rapidez es {f(r1.rho_mediana_dentro)} (mediana entre películas; p Holm {peq(r1.p_holm)}), y entre alargamiento y EAD₁ es {f(r2.rho_mediana_dentro)} (EAD más baja significa más persistencia). Las células redondas son más lentas (circularidad vs rapidez: {f(r3.rho_mediana_dentro)}). Es la firma de la polaridad frente–atrás: una célula que migra se alarga, con un frente que avanza y una cola que se retrae.</p>")
+        s.append("<p>Las correlaciones son moderadas (|ρ| ≈ 0.1–0.3): la forma explica una parte, no todo, del movimiento de cada célula. La versión anterior del análisis había encontrado correlaciones más débiles (≤ 0.16); con la segmentación y el seguimiento validados la señal es más clara. Con los núcleos (su forma también cambia al migrar) se obtiene el mismo patrón, lo que descarta que sea un artefacto de la segmentación del contorno celular.</p>")
+    else:
+        r = g("circularidad", "rapidez_um_min")
+        s.append(f"<p>En CAMAD, dentro de cada experimento, las células más redondas también son más lentas (circularidad vs rapidez, ρ = {f(r.rho_mediana_dentro)}), pero con solo 10 experimentos con suficientes células y unas pocas trayectorias por experimento ninguna correlación sobrevive a la corrección por comparaciones múltiples (p Holm ≥ {fp(t.p_holm.min())}).</p>")
+    s.append("</div>")
+    nombre = {"bf": "Brightfield", "sirdna": "Núcleos", "camad": "CAMAD"}[ds]
+    s.append(figura(f"figuras/{ds}_forma_movimiento.png", f"<b>{nombre}: correlación entre la forma y el movimiento de cada célula</b> (mediana de las correlaciones calculadas dentro de cada réplica). Rojo: relación positiva; azul: negativa. Las estrellas indican significancia con las réplicas como unidad y corrección de Holm."))
+    return "\n".join(s)
+
+
+def tabla_replicas(ds, var):
+    pe = csv(ds, "estadisticas", var, "por_pelicula.csv")
+    if pe is None:
+        return ""
+    cols = [("movie", "Réplica", 0), ("n_segmentos", "Trayect.", 0), ("densidad_cel_mm2", "Densidad /mm²", 0),
+            ("rapidez_um_min", "Rapidez µm/min", 2), ("direccionalidad_1h", "Direcc. 1 h", 2),
+            ("alfa_corto", "α corto", 2), ("alfa_largo", "α largo", 2), ("alfa_celula_mediana", "α célula (med.)", 2),
+            ("prw_P_min", "P min", 1), ("prw_S_um_min", "S µm/min", 2), ("prw_sigma_um", "σ µm", 2), ("prw_r2", "R² PRW", 3),
+            ("vacf_lag1", "VACF(1)", 2), ("cos_giro_medio", "⟨cos giro⟩", 2), ("rho_rapidez_cosgiro", "ρ rap.–giro", 2),
+            ("ead1_ens_corr", "EAD₁ ens.", 3), ("ead1_cel_corr", "EAD₁ cél.", 3), ("tl1_ens_min", "TL₁ min", 0),
+            ("se_ventana_corr", "SE", 3), ("se_wavelet_corr", "SE(t)", 3), ("corr_dir_0_50um", "Alin. 0–50 µm", 3),
+            ("area_um2", "Área µm²", 0), ("aspect_ratio", "Alarg.", 2), ("circularidad", "Circ.", 2)]
+    t = pe.copy()
+    if ds == "camad":
+        t["movie"] = [f"exp{m} ({c})" for m, c in zip(t.movie, t.condicion)]
+        orden = {c: i for i, c in enumerate(CAMAD_ORDEN_CONDICIONES)}
+        t = t.assign(o=pe.condicion.map(orden)).sort_values(["o", "movie"])
+    for c, _, d in cols[1:]:
+        t[c] = t[c].map(lambda x, d=d: f(x, d))
+    return tabla(t, [c for c, _, _ in cols], [h for _, h, _ in cols], num=tuple(c for c, _, _ in cols[1:]))
+
+
+def seccion_tablas_replica(vbf, vca):
+    s = ['<div class="texto"><p>Todas las medidas de cada película o experimento, para quien quiera revisar réplica por réplica. Abreviaturas: P, S y σ son la persistencia, la rapidez y el error de posición del modelo de caminata persistente; VACF(1) es la autocorrelación de la velocidad a un paso; ρ rap.–giro es el acoplamiento rapidez–persistencia; EAD₁ ens. y cél. son la EAD corregida del conjunto de células y el promedio por célula; SE es la entropía corregida del espectro; «Alin.» es el alineamiento de direcciones entre vecinas. Los mismos datos, con más columnas, están en <span class="mono">resultados/v2/&lt;dataset&gt;/estadisticas/&lt;variante&gt;/por_pelicula.csv</span>.</p></div>']
+    for ds, var, tit in (("bf", vbf, "Brightfield (16 películas)"), ("sirdna", "dist", "Núcleos SiR-DNA (16 películas)"),
+                         ("camad", vca, "CAMAD (16 experimentos)")):
+        s.append(f"<details open><summary><b>{tit}</b></summary>{tabla_replicas(ds, var)}</details>")
+    for ds, tit in (("bf", "Brightfield"), ("sirdna", "Núcleos")):
+        h = csv("inferencia", ds, "heterogeneidad_peliculas.csv")
+        if h is not None:
+            h = h.copy()
+            h["m"] = h.metrica.map({**NOMBRE, "alfa_celula": "α célula", "ead1_corr": "EAD₁ corregida", "tl1_min": "TL₁ (min)",
+                                    "se_wavelet_media_corr": "SE en el tiempo corregida"}).fillna(h.metrica)
+            h["i"] = h.icc_pelicula.map(lambda x: f"{f(100 * x, 0)}%")
+            h["k"] = h.kruskal_p_entre_peliculas.map(fp)
+            s.append(f"<details><summary><b>{tit}: cuánto de la variación entre células se debe a la película</b></summary>")
+            s.append(tabla(h, ["m", "i", "k"], ["Medida", "Varianza explicada por la película (ICC)", "p Kruskal-Wallis entre películas"], num=("i", "k")))
+            s.append("</details>")
+    pr = csv("inferencia", "sirdna", "pruebas_nulo.csv")
+    if pr is not None:
+        t = pr.copy()
+        t["med"] = t.mediana.map(lambda x: f(x, 3))
+        t["ph"] = [f'<span class="{"sig" if p < 0.05 else "nosig"}">{fp(p)}</span>' for p in t.p_holm]
+        s.append("<details><summary><b>Núcleos: pruebas contra el azar</b></summary>")
+        s.append(tabla(t, ["prueba", "hipotesis", "med", "ph"], ["Prueba", "Qué significaría", "Mediana", "p Holm"], num=("med", "ph")))
+        s.append("</details>")
+    o = csv("inferencia", "camad", "omnibus_experimentos.csv")
+    if o is not None:
+        t = o.copy()
+        t["m"] = t.metrica.map(NOMBRE).fillna(t.metrica)
+        for c in ["kruskal_p", "anova_perm_p", "anova_perm_p_holm"]:
+            t[c + "_"] = t[c].map(fp)
+        s.append("<details><summary><b>CAMAD: comparación entre los cinco sustratos, todas las medidas</b></summary>")
+        s.append(tabla(t, ["m", "kruskal_p_", "anova_perm_p_", "anova_perm_p_holm_"],
+                       ["Medida", "p Kruskal-Wallis", "p ANOVA por permutación", "p permutación (Holm)"],
+                       num=("kruskal_p_", "anova_perm_p_", "anova_perm_p_holm_")))
+        s.append("</details>")
+    wh = csv("whad", "por_posicion.csv")
+    if wh is not None:
+        t = wh.copy()
+        t["pos"] = t.grupo + " · " + t.posicion.astype(str)
+        for c, d in (("velocidad_frente_um_h", 1), ("cierre_12h_pct", 0), ("t50_h", 1), ("desprendidas_media", 1)):
+            t[c + "_"] = t[c].map(lambda x, d=d: f(x, d))
+        s.append("<details><summary><b>WHAD: cada posición</b></summary>")
+        s.append(tabla(t, ["linea", "condicion", "pos", "velocidad_frente_um_h_", "cierre_12h_pct_", "t50_h_", "desprendidas_media_"],
+                       ["Línea", "Condición", "Experimento · posición", "Frente µm/h", "% cierre a 12 h", "t 50% (h)", "Desprendidas/imagen"],
+                       num=("velocidad_frente_um_h_", "cierre_12h_pct_", "t50_h_", "desprendidas_media_")))
+        s.append("</details>")
+    return "\n".join(s)
+
+
+def seccion_nucleos_detalle():
+    s = ['<details><summary><b>Resultados completos con los núcleos (mismas figuras que para las células)</b></summary>']
+    for fig_, cap in (("sirdna_msd_vacf_fps", "MSD, autocorrelación y espectro de la velocidad de los núcleos."),
+                      ("sirdna_ead", "EAD de los núcleos: PDF de ángulos, EAD(τ) y distribución conjunta (TL₁, EAD₁)."),
+                      ("sirdna_pasos_rapidez_giro", "Distribución de v², rapidez contra giro y acoplamiento rapidez–persistencia con núcleos."),
+                      ("sirdna_colectivo_acoplamiento", "Coordinación entre núcleos vecinos."),
+                      ("sirdna_sensibilidad_paso", "Sensibilidad al paso de análisis con núcleos."),
+                      ("sirdna_mapas_temporales", "SE(t) y EAD(t) de los núcleos.")):
+        s.append(figura(f"figuras/{fig_}.png", f"<b>Núcleos.</b> {cap}"))
+    s.append(seccion_alfa("sirdna", "dist"))
+    s.append(seccion_forma("sirdna"))
+    s.append("</details>")
+    return "\n".join(s)
+
+
+def seccion_usos(vbf):
+    s = ['<div class="texto">',
+         "<p>Además del reporte, el pipeline deja tablas listas para análisis propios. Para cada video o experimento entrega:</p>",
+         "<ul>",
+         "<li><b>Una tabla por célula</b> (<span class=\"mono\">por_celula.csv</span>): rapidez media y mediana, direccionalidad, desplazamiento neto, α propio, persistencia por entropía (EAD₁, TL₁, SE, SE(t) promedio), área, alargamiento, circularidad, solidez, posición y momento de inicio. Es la base para comparar poblaciones de células o buscar subpoblaciones.</li>",
+         "<li><b>Una tabla por réplica</b> (<span class=\"mono\">por_pelicula.csv</span>): todas las medidas poblacionales (MSD y sus α, modelo de caminata persistente, autocorrelación, entropías del conjunto, coordinación entre vecinas, densidad, morfología). Es la tabla sobre la que se hacen las comparaciones entre condiciones.</li>",
+         "<li><b>Curvas</b>: MSD, autocorrelación de la velocidad, espectro de potencias, EAD(τ) y correlación espacial, por réplica.</li>",
+         "<li><b>Series en el tiempo</b> (<span class=\"mono\">se_wavelet_tiempo.csv.gz</span>, <span class=\"mono\">ead_tiempo.csv.gz</span>): la persistencia de cada célula minuto a minuto, para detectar cambios de comportamiento (por ejemplo, tras agregar un fármaco).</li>",
+         "<li><b>Trayectorias</b> (<span class=\"mono\">tracks.csv.gz</span>): posición, forma y etiqueta de cada célula en cada imagen; y con marcador nuclear, <b>linajes</b> (qué célula es hija de cuál).</li>",
+         "<li><b>Control de calidad</b>: validación de la segmentación y del seguimiento, y videos para revisar a ojo.</li>",
+         "</ul>",
+         "<p><b>Preguntas de investigación que esto permite responder</b>, con los mismos scripts:</p>",
+         "<ul>",
+         "<li><b>¿Una condición cambia la migración?</b> (fármaco, sustrato, silenciamiento de un gen, línea celular). Se compara la tabla por réplica entre condiciones, como se hizo con los sustratos de CAMAD. Las medidas más estables entre réplicas (EAD₁, SE) necesitan menos réplicas para detectar un efecto (sección 12).</li>",
+         "<li><b>¿Cuándo cambia?</b> Las series en el tiempo permiten ubicar el momento en que la persistencia o la rapidez cambian, por ejemplo tras un estímulo, como en el análisis de Liu et al. (2021) de células que pasan por canales.</li>",
+         "<li><b>¿Hay subpoblaciones?</b> Con la tabla por célula se pueden agrupar células por su firma de movimiento y forma (por ejemplo, rápidas y alargadas contra lentas y redondas).</li>",
+         "<li><b>¿Las células se coordinan?</b> Alineamiento entre vecinas y correlación de persistencia entre pares, según densidad o condición.</li>",
+         "<li><b>¿El movimiento distingue la agresividad?</b> Ver la sección siguiente.</li>",
+         "</ul>",
+         "<p><b>Recomendaciones para adquirir datos propios</b> (surgen de lo aprendido aquí): una imagen cada 1–2 minutos, para que el error de posición no oculte la persistencia; campos con densidad moderada; al menos 5 réplicas biológicas (días o placas distintos) por condición; si es posible, un marcador nuclear, que habilita la validación automática y los linajes; y anotar siempre la calibración (µm por píxel e intervalo). Con esas condiciones el pipeline se aplica con cambios mínimos de configuración.</p>",
+         "</div>"]
     return "\n".join(s)
 
 
@@ -687,7 +857,8 @@ def hallazgos(vbf, vca):
         h.append(f"<b>La segmentación de CAMAD mejoró de {f(100 * full, 1)}% a {f(100 * ea['recall'], 1)}%</b> de células encontradas, al trabajar las imágenes a una escala adecuada para el modelo.")
     rb = fila_resumen("bf", "prw_P_min")
     if rb is not None:
-        h.append(f"<b>Las MDA-MB-231 son rápidas pero poco persistentes:</b> avanzan a {mic('bf', 'rapidez_um_min', 2, 'µm/min')} y mantienen la dirección unos {f(rb.media, 0)} minutos. A la escala de horas se mueven casi como una caminata al azar.")
+        pe_ = csv("bf", "estadisticas", vbf, "por_pelicula.csv")
+        h.append(f"<b>Las MDA-MB-231 son rápidas pero poco persistentes:</b> avanzan a {mic('bf', 'rapidez_um_min', 2, 'µm/min')} y mantienen la dirección unos {f(rb.media, 0)} minutos. Son superdifusivas a escala corta en las 16 películas (α de {f(pe_.alfa_corto.min())} a {f(pe_.alfa_corto.max())}) y tienden a una caminata al azar a escala de horas.")
     e1 = fila_resumen("bf", "ead1_ens_corr")
     se = fila_resumen("bf", "se_ventana_corr")
     if e1 is not None and se is not None:
@@ -698,10 +869,14 @@ def hallazgos(vbf, vca):
         t = t.set_index("metrica")
         cos_b, cos_n = t.loc["cos_giro_medio", "media_bf"], t.loc["cos_giro_medio", "media_nucleos"]
         h.append(f"<b>Medir células o núcleos da la misma imagen general, con una diferencia instructiva.</b> La rapidez coincide bien entre ambos métodos (concordancia {f(t.loc['rapidez_um_min', 'ccc_lin'], 2)}). En cambio, con los núcleos, cuya posición «tiembla» menos, se detecta casi el doble de persistencia entre pasos (coseno medio del giro {f(cos_n, 2)} contra {f(cos_b, 2)}), y aparece una correlación débil pero estadísticamente significativa entre la persistencia de células vecinas, que con brightfield no llega a verse.")
+    fm = csv("inferencia", "bf", "forma_movimiento.csv")
+    if fm is not None:
+        r = fm.set_index(["forma", "movimiento"]).loc[("aspect_ratio", "rapidez_um_min")]
+        h.append(f"<b>La forma predice parte del movimiento:</b> dentro de cada película, las células más alargadas se mueven más rápido y con más persistencia (ρ = {f(r.rho_mediana_dentro)} entre alargamiento y rapidez, p Holm {peq(r.p_holm)}), la firma de la polaridad frente–atrás. Se confirma con los núcleos.")
     pc = csv("camad", "estadisticas", vca, "por_pelicula.csv")
     if pc is not None:
         a = pc.groupby("condicion").area_um2.mean()
-        h.append(f"<b>El sustrato cambia la forma de la célula en las primeras horas.</b> Sobre Matrigel y colágeno las MDA-MB-231 se extienden (área media ~{f(a.get('Matrigel'), 0)} y ~{f(a.get('Colágeno I'), 0)} µm²), mientras que sobre vidrio sin recubrimiento siguen redondas (~{f(a.get('Vidrio'), 0)} µm²), en todos los experimentos (p exacta = 0.036). Las diferencias de rapidez y persistencia entre sustratos son tendencias que requieren más experimentos.")
+        h.append(f"<b>El sustrato cambia la forma de la célula en las primeras horas.</b> Sobre Matrigel y colágeno las MDA-MB-231 se extienden (área media ~{f(a.get('Matrigel'), 0)} y ~{f(a.get('Colágeno I'), 0)} µm²), mientras que sobre vidrio sin recubrimiento siguen redondas (~{f(a.get('Vidrio'), 0)} µm²), en todos los experimentos (p exacta = 0.036). Sobre vidrio, además, las células no migran: su MSD se aplana (confinamiento), mientras que sobre Matrigel y colágeno el α a escala larga es 1.0–1.8. Las diferencias de rapidez y de persistencia por entropía entre sustratos son tendencias que requieren más experimentos.")
     r_l = csv("linajes", "resumen.csv")
     if r_l is not None:
         h.append(f"<b>Etiquetas y árboles genealógicos (prototipo).</b> Cada célula recibe una etiqueta que pasa a sus hijas (12 → 12.1 y 12.2). Se detectaron {int(r_l.divisiones.sum())} divisiones con el canal de núcleos; la mitad de las revisadas a ojo son reales, así que para usarlo en serio falta un clasificador de mitosis.")
@@ -725,7 +900,7 @@ def main():
         "VALIDACION": seccion_validacion(), "SIMULACIONES": seccion_simulaciones(),
         "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "LINAJES": seccion_linajes(), "RESULTADOS_CAMAD": seccion_camad(vca),
         "RESULTADOS_WHAD": seccion_whad(), "AGRESIVIDAD": seccion_agresividad(vbf), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
-        "TECNICO": seccion_tecnico(vbf, vca),
+        "TECNICO": seccion_tecnico(vbf, vca), "REPLICAS": seccion_tablas_replica(vbf, vca), "USOS": seccion_usos(vbf),
     }
     for k, v in rep.items():
         tpl = tpl.replace("{{" + k + "}}", v)

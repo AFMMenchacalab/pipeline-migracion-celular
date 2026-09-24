@@ -412,6 +412,120 @@ def fig_bf_vs_nuc(var_bf, var_nuc):
     S.guardar(fig, FIG / "bf_vs_nucleos")
 
 
+def fig_msd_por_replica(ds, var):
+    """MSD de cada película/experimento en su propio panel, con el ajuste PRW
+    de esa réplica y las rectas de alfa corto y largo."""
+    from lib.motilidad import prw_msd
+    msd = est(ds, var, "msd.csv")
+    peli = est(ds, var, "por_pelicula.csv").set_index("movie")
+    from lib.config import CAMAD_CONDICION
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("s16", Path(__file__).resolve().parent / "16_estadisticas.py")
+    s16 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(s16)
+    P = s16.PARAMS[ds]
+    movies = sorted(msd.movie.unique())
+    fig, axs = plt.subplots(4, 4, figsize=(15, 13), sharex=True, sharey=True)
+    for ax, mv in zip(axs.ravel(), movies):
+        g = msd[(msd.movie == mv) & msd.msd_um2.notna()]
+        t = g.tau_s.to_numpy() / 60
+        ax.plot(t, g.msd_um2, "o", ms=2.5, color=S.CAT[0], alpha=0.8)
+        r = peli.loc[mv]
+        if np.isfinite(r.prw_P_min):
+            ax.plot(t, prw_msd(t, r.prw_D_um2_min, r.prw_P_min, r.prw_sigma_um ** 2), color=S.CAT[1], lw=1.4)
+        for (a, b), al, col in ((P["alfa_corto"], r.alfa_corto, S.TINTA), (P["alfa_largo"], r.alfa_largo, S.CAT[2])):
+            k = (t >= a) & (t <= b)
+            if k.sum() >= 3 and np.isfinite(al):
+                c = np.polyfit(np.log(t[k]), np.log(g.msd_um2.to_numpy()[k]), 1)
+                ax.plot(t[k], np.exp(c[1]) * t[k] ** c[0], color=col, lw=2.2, ls="--")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        tit = f"exp{mv}: {CAMAD_CONDICION.get(mv, '')}" if ds == "camad" else f"película {mv}"
+        ax.set_title(f"{tit}\nα corto {r.alfa_corto:.2f} · α largo {r.alfa_largo:.2f} · P {r.prw_P_min:.1f} min", fontsize=8)
+    for ax in axs[-1]:
+        ax.set_xlabel("τ (min)")
+    for ax in axs[:, 0]:
+        ax.set_ylabel("MSD (µm²)")
+    fig.suptitle(f"{NOMBRE_DS[ds]}: MSD de cada réplica. Puntos: datos; naranja: ajuste PRW; negro: α corto "
+                 f"({P['alfa_corto'][0]:g}–{P['alfa_corto'][1]:g} min); verde: α largo ({P['alfa_largo'][0]:g}–{P['alfa_largo'][1]:g} min)")
+    S.guardar(fig, FIG / f"{ds}_msd_por_replica")
+
+
+def fig_alfa(ds, var):
+    """alfa corto/largo por réplica, alfa de cada célula por réplica y alfa(tau) local."""
+    from lib.motilidad import alfa_local
+    peli = est(ds, var, "por_pelicula.csv")
+    cel = est(ds, var, "por_celula.csv")
+    msd = est(ds, var, "msd.csv")
+    from lib.config import CAMAD_CONDICION
+    if ds == "camad":
+        orden = CAMAD_ORDEN_CONDICIONES
+        peli = peli.assign(o=peli.condicion.map({c: i for i, c in enumerate(orden)})).sort_values(["o", "movie"])
+    else:
+        peli = peli.sort_values("movie")
+    movies = peli.movie.tolist()
+    etiquetas = [f"exp{m}" if ds == "camad" else str(m) for m in movies]
+    fig, axs = plt.subplots(1, 3, figsize=(17, 4.4), gridspec_kw={"width_ratios": [1.1, 1.4, 1]})
+    x = np.arange(len(movies))
+    axs[0].plot(np.vstack([x, x]), np.vstack([peli.alfa_corto, peli.alfa_largo]), color=S.NEUTRO, lw=0.8)
+    axs[0].scatter(x, peli.alfa_corto, color=S.CAT[0], s=26, zorder=3, label="α corto")
+    axs[0].scatter(x, peli.alfa_largo, color=S.CAT[1], s=26, zorder=3, label="α largo")
+    axs[0].axhline(1, color=S.TINTA2, lw=0.8, ls="--")
+    axs[0].set_xticks(x, etiquetas, rotation=90 if ds == "camad" else 0, fontsize=7)
+    axs[0].set_ylabel("α (pendiente del MSD)")
+    axs[0].set_title("α de cada réplica (1 = al azar, 2 = recto)")
+    axs[0].legend()
+    datos = [cel[cel.movie == m].alfa_celula.dropna() for m in movies]
+    bp = axs[1].boxplot(datos, positions=x, widths=0.6, showfliers=False, patch_artist=True)
+    for b in bp["boxes"]:
+        b.set(facecolor=S.AZUL_SEQ[1], edgecolor=S.TINTA2)
+    for med in bp["medians"]:
+        med.set(color=S.TINTA, lw=1.6)
+    axs[1].axhline(1, color=S.TINTA2, lw=0.8, ls="--")
+    axs[1].set_xticks(x, etiquetas, rotation=90 if ds == "camad" else 0, fontsize=7)
+    axs[1].set_ylabel("α de cada célula")
+    axs[1].set_title(f"α célula por célula ({len(cel.alfa_celula.dropna())} trayectorias)")
+    for mv in movies:
+        g = msd[(msd.movie == mv) & (msd.msd_um2 > 0)]
+        if len(g) < 5:
+            continue
+        a = alfa_local(g.tau_s.to_numpy() / 60, g.msd_um2.to_numpy())
+        axs[2].plot(g.tau_s / 60, a, color=S.NEUTRO, lw=0.7, alpha=0.8)
+    gm = msd[msd.msd_um2 > 0].groupby("tau_s").msd_um2.mean()
+    axs[2].plot(gm.index / 60, alfa_local(gm.index.to_numpy() / 60, gm.to_numpy()), color=S.CAT[0], lw=2.2)
+    for yv in (1, 2):
+        axs[2].axhline(yv, color=S.TINTA2, lw=0.8, ls="--")
+    axs[2].set_xscale("log")
+    axs[2].set_xlabel("τ (min)")
+    axs[2].set_ylabel("α local = d log MSD / d log τ")
+    axs[2].set_title("Cómo cambia el régimen con la escala de tiempo")
+    axs[2].set_ylim(0, 2.3)
+    S.guardar(fig, FIG / f"{ds}_alfa")
+
+
+def fig_forma_movimiento(ds):
+    t = pd.read_csv(res_dir("inferencia", ds) / "forma_movimiento.csv")
+    nf = {"area_um2": "área", "aspect_ratio": "alargamiento", "circularidad": "circularidad", "solidez": "solidez"}
+    nm = {"rapidez_um_min": "rapidez", "direccionalidad_1h": "direccionalidad", "alfa_celula": "α célula",
+          "ead1_corr": "EAD₁ corr.", "se_ventana_corr": "SE corr."}
+    piv = t.pivot(index="forma", columns="movimiento", values="rho_mediana_dentro").loc[list(nf), list(nm)]
+    ph = t.pivot(index="forma", columns="movimiento", values="p_holm").loc[list(nf), list(nm)]
+    fig, ax = plt.subplots(figsize=(7.2, 4))
+    lim = max(0.3, np.nanmax(np.abs(piv.values)))
+    im = ax.imshow(piv.values, cmap=S.CMAP_DIV, vmin=-lim, vmax=lim)
+    for i in range(piv.shape[0]):
+        for j in range(piv.shape[1]):
+            v, p = piv.values[i, j], ph.values[i, j]
+            est_ = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
+            ax.text(j, i, f"{v:+.2f}{est_}", ha="center", va="center", fontsize=8, color=S.TINTA)
+    ax.set_xticks(range(len(nm)), list(nm.values()))
+    ax.set_yticks(range(len(nf)), list(nf.values()))
+    ax.grid(False)
+    fig.colorbar(im, ax=ax, fraction=0.046, label="ρ de Spearman (mediana dentro de réplicas)")
+    ax.set_title(f"{NOMBRE_DS[ds]}: forma de la célula vs movimiento\n(* p Holm < 0.05, ** < 0.01, *** < 0.001; réplicas como unidad)", fontsize=9)
+    S.guardar(fig, FIG / f"{ds}_forma_movimiento")
+
+
 # ------------------------------------------------------------------ CAMAD
 def fig_camad_condiciones(var):
     peli = est("camad", var, "por_pelicula.csv")
@@ -551,7 +665,9 @@ def main():
             continue
         tareas += [(f"{ds}_msd", fig_msd_vacf, (ds, var)), (f"{ds}_ead", fig_ead, (ds, var)),
                    (f"{ds}_mapas", fig_heatmaps_tiempo, (ds, var)), (f"{ds}_colectivo", fig_colectivo, (ds, var)),
-                   (f"{ds}_sens", fig_sensibilidad, (ds, var)), (f"{ds}_pasos", fig_pasos, (ds, var))]
+                   (f"{ds}_sens", fig_sensibilidad, (ds, var)), (f"{ds}_pasos", fig_pasos, (ds, var)),
+                   (f"{ds}_msd_rep", fig_msd_por_replica, (ds, var)), (f"{ds}_alfa", fig_alfa, (ds, var)),
+                   (f"{ds}_forma", fig_forma_movimiento, (ds,))]
         if ds != "camad":
             tareas.append((f"{ds}_densidad", fig_densidad, (ds, var)))
             tareas.append((f"{ds}_tray", fig_trayectorias, (ds, var, [1, 8, 15])))

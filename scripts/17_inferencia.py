@@ -43,10 +43,46 @@ METRICAS = ["rapidez_um_min", "direccionalidad_1h", "prw_P_min", "prw_D_um2_min"
             "se_fps_completa", "se_fps_completa_corr", "se_ventana", "se_ventana_corr", "se_wavelet",
             "se_wavelet_corr", "ead1_cel", "ead1_cel_corr", "tl1_cel_mediana_min", "ead1_ens", "ead1_ens_corr",
             "tl1_ens_min", "ead_t_pct_0_03", "ead_t_pct_03_06", "ead_t_pct_06_1", "ead_t_corr_pct_06_1",
+            "alfa_celula_mediana", "frac_celulas_superdifusivas", "frac_celulas_subdifusivas",
             "corr_dir_0_50um", "corr_dir_100_200um", "corr_se_vecinos", "corr_se_lejanos",
             "area_um2", "aspect_ratio", "circularidad", "solidez", "densidad_cel_mm2", "n_segmentos"]
-METRICAS_CELULA = ["rapidez_um_min", "direccionalidad_1h", "se_ventana_corr", "se_wavelet_media_corr",
+METRICAS_CELULA = ["rapidez_um_min", "direccionalidad_1h", "alfa_celula", "se_ventana_corr", "se_wavelet_media_corr",
                    "ead1_corr", "tl1_min", "area_um2", "aspect_ratio", "circularidad"]
+
+
+FORMA = ["area_um2", "aspect_ratio", "circularidad", "solidez"]
+MOVIMIENTO = ["rapidez_um_min", "direccionalidad_1h", "alfa_celula", "ead1_corr", "se_ventana_corr"]
+
+
+def forma_movimiento(cel, out):
+    """Correlación forma <-> movimiento célula por célula, calculada DENTRO de
+    cada película/experimento (Spearman) y resumida entre réplicas: mediana
+    de rho y prueba de Wilcoxon de los rho contra 0 (réplicas = unidad). Se
+    agrega el rho "pooled" solo como contraste: mezcla diferencias entre
+    campos con relación real (v1, script 06, ya lo había visto)."""
+    filas = []
+    for fm in FORMA:
+        for mv in MOVIMIENTO:
+            if fm not in cel or mv not in cel:
+                continue
+            rhos = []
+            for _, g in cel.groupby("movie"):
+                g = g[[fm, mv]].dropna()
+                if len(g) >= 10:
+                    rhos.append(stats.spearmanr(g[fm], g[mv]).statistic)
+            rhos = np.array([r for r in rhos if np.isfinite(r)])
+            if len(rhos) < 4:
+                continue
+            gg = cel[[fm, mv]].dropna()
+            filas.append({"forma": fm, "movimiento": mv, "rho_mediana_dentro": np.median(rhos),
+                          "rho_q25": np.quantile(rhos, 0.25), "rho_q75": np.quantile(rhos, 0.75),
+                          "n_replicas": len(rhos), "p_wilcoxon": stats.wilcoxon(rhos).pvalue,
+                          "rho_pooled": stats.spearmanr(gg[fm], gg[mv]).statistic})
+    t = pd.DataFrame(filas)
+    if len(t):
+        t["p_holm"] = I.holm(t.p_wilcoxon)
+    t.to_csv(out / "forma_movimiento.csv", index=False)
+    return t
 
 
 def seccion_un_grupo(ds, var):
@@ -87,6 +123,7 @@ def seccion_un_grupo(ds, var):
     pr.to_csv(out / "pruebas_nulo.csv", index=False)
 
     # heterogeneidad entre campos
+    forma_movimiento(cel, out)
     icc = pd.DataFrame([{"metrica": m, "icc_pelicula": I.icc_peliculas(cel, m),
                          "kruskal_p_entre_peliculas": stats.kruskal(*[g[m].dropna() for _, g in cel.groupby("movie")
                                                                        if g[m].notna().sum() > 2]).pvalue}
@@ -135,6 +172,7 @@ def seccion_camad(var):
     out = res_dir("inferencia", "camad")
     mda = peli[peli.linea == "MDA-MB-231"]
     celm = cel[cel.condicion != "Matriz 231 (exp8-9)"]
+    forma_movimiento(celm, out)
     # descriptivo por condición (experimentos como réplicas)
     desc = []
     for cond in CAMAD_ORDEN_CONDICIONES:

@@ -136,6 +136,7 @@ def analizar_pelicula(args):
              "desplazamiento_neto_um": float(np.linalg.norm(xy[-1] - xy[0]))}
         c.update(morfologia_celula(g))
         # SE Fourier
+        c["alfa_celula"], c["alfa_celula_r2"] = M.alfa_celula(xy, D_min)
         c["se_fps_completa"] = E.se_fps(v)
         c["se_fps_completa_corr"] = c["se_fps_completa"] / E.se_nula(len(v))
         sev, nw = E.se_ventanas(v, P["L_se"])
@@ -286,6 +287,9 @@ def analizar_pelicula(args):
         "prw_D_um2_min": prw["D"] * 60, "prw_P_min": prw["P"] / 60, "prw_sigma_um": prw["sigma"],
         "prw_S_um_min": prw["S"] * 60, "prw_r2": prw["r2"],
         "alfa_corto": a_c, "alfa_largo": a_l,
+        "alfa_celula_mediana": cel.alfa_celula.median() if len(cel) else np.nan,
+        "frac_celulas_superdifusivas": (cel.alfa_celula > 1.2).mean() if len(cel) else np.nan,
+        "frac_celulas_subdifusivas": (cel.alfa_celula < 0.8).mean() if len(cel) else np.nan,
         "vacf_lag1": vac[1] if len(vac) > 1 else np.nan,
         "rho_rapidez_cosgiro": rho_rap_giro,
         "cos_giro_medio": float(np.mean(np.cos(ang1))) if len(ang1) else np.nan,

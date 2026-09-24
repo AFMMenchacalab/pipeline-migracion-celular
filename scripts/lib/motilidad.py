@@ -35,6 +35,28 @@ def msd_segmento(xy, max_lag):
     return out, cnt
 
 
+def alfa_celula(xy, dt_min, max_frac=1 / 3, max_lags=12, min_lags=4):
+    """Exponente alfa de UNA trayectoria: pendiente log-log de su TA-MSD en
+    los lags 1..min(max_lags, n*max_frac) (a lags largos el TA-MSD de una
+    sola célula se promedia sobre muy pocos pares y es muy ruidoso; v1 usaba
+    el mismo criterio de "no más de un tercio de la trayectoria").
+    Devuelve (alfa, r2)."""
+    n = len(xy)
+    L = int(min(max_lags, np.floor((n - 1) * max_frac)))
+    if L < min_lags:
+        return np.nan, np.nan
+    m, _ = msd_segmento(xy, L)
+    tau = np.arange(1, L + 1) * dt_min
+    ok = np.isfinite(m) & (m > 0)
+    if ok.sum() < min_lags:
+        return np.nan, np.nan
+    x, y = np.log(tau[ok]), np.log(m[ok])
+    b, a = np.polyfit(x, y, 1)
+    pred = a + b * x
+    r2 = 1 - ((y - pred) ** 2).sum() / max(((y - y.mean()) ** 2).sum(), 1e-12)
+    return float(b), float(r2)
+
+
 def tea_msd(segs, max_lag, min_pares=50):
     """MSD promediado en tiempo y ensamble: suma de desplazamientos^2 sobre
     todos los pares de todas las células / número de pares, por lag."""

@@ -126,11 +126,13 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <li><a href="#linajes">Divisiones y árboles genealógicos</a></li>
     <li><a href="#camad">Resultados: distintos sustratos</a></li>
     <li><a href="#whad">Resultados: cierre de herida</a></li>
+    <li><a href="#usos">Qué datos entrega y cómo usarlos</a></li>
     <li><a href="#agresividad">¿Distingue el movimiento la agresividad?</a></li>
     <li><a href="#rendimiento">Tiempo de cálculo y Raspberry Pi</a></li>
     <li><a href="#limitaciones">Limitaciones</a></li>
     <li><a href="#siguiente">Próximos pasos</a></li>
     <li><a href="#glosario">Glosario</a></li>
+    <li><a href="#replicas">Anexo: todas las cifras por réplica</a></li>
     <li><a href="#tecnico">Anexo técnico</a></li>
   </ol>
 </nav>
@@ -140,6 +142,7 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
   <p class="ceja">Reporte de avance · {{FECHA}}</p>
   <h1>Cómo se mueven las células de cáncer de mama MDA-MB-231</h1>
   <p class="lede">Seguimos miles de células en videos de microscopio, una por una, y medimos su rapidez y la persistencia con que mantienen su dirección, incluidas las dos medidas de entropía de Shannon propuestas por Liu et al. (2021, 2024). Este reporte explica cómo se hizo, cuánto se puede confiar en cada número y qué encontramos.</p>
+  <div class="explica" style="max-width:none"><strong>Objetivo de este reporte</strong><p>(1) Comprobar que el pipeline de análisis funciona y cuánto se puede confiar en sus mediciones; (2) mostrar qué datos se pueden obtener de un video de migración celular, con toda la estadística y su interpretación; y (3) proponer cómo usar esos datos en nuestra investigación, incluida la pregunta de si el movimiento permite distinguir células más o menos agresivas.</p></div>
   <figure>
     <div class="placa"><video src="videos/pipeline_bf.mp4" poster="videos/pipeline_bf.jpg" controls muted loop playsinline preload="metadata" aria-label="Video del análisis en cuatro pasos"></video></div>
     <figcaption><b>El análisis en cuatro pasos, sobre un video real.</b> (1) Imagen de microscopio sin marcar (brightfield), una cada 5 minutos durante 8 horas. (2) Un modelo de inteligencia artificial (Cellpose) detecta el contorno de cada célula. (3) En el mismo campo, una tinción fluorescente muestra los núcleos, que usamos para comprobar que el paso 2 funciona. (4) Unimos cada célula con la misma célula en la imagen siguiente y obtenemos su trayectoria. Cada línea de color es el camino recorrido por una célula en los últimos 100 minutos.</figcaption>
@@ -257,28 +260,33 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 {{RESULTADOS_WHAD}}
 </section>
 
+<section id="usos">
+  <h2><span class="num">11</span>Qué datos entrega el pipeline y cómo usarlos en la investigación</h2>
+{{USOS}}
+</section>
+
 <section id="agresividad">
-  <h2><span class="num">11</span>¿Sirve el movimiento para distinguir células más y menos agresivas?</h2>
+  <h2><span class="num">12</span>¿Sirve el movimiento para distinguir células más y menos agresivas?</h2>
 {{AGRESIVIDAD}}
 </section>
 
 <section id="rendimiento">
-  <h2><span class="num">12</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
+  <h2><span class="num">13</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
 {{RENDIMIENTO}}
 </section>
 
 <section id="limitaciones" class="texto">
-  <h2><span class="num">13</span>Limitaciones</h2>
+  <h2><span class="num">14</span>Limitaciones</h2>
 {{LIMITACIONES}}
 </section>
 
 <section id="siguiente" class="texto">
-  <h2><span class="num">14</span>Próximos pasos</h2>
+  <h2><span class="num">15</span>Próximos pasos</h2>
 {{PROXIMOS}}
 </section>
 
 <section id="glosario">
-  <h2><span class="num">15</span>Glosario</h2>
+  <h2><span class="num">16</span>Glosario</h2>
   <dl class="glosario">
     <dt>Brightfield</dt><dd>Microscopía de campo claro: la luz atraviesa la muestra sin tinción. Las células se ven por pequeños cambios de contraste.</dd>
     <dt>Contraste de fase</dt><dd>Técnica de microscopía que convierte diferencias de espesor de la célula en diferencias de brillo. Es la que usa CAMAD.</dd>
@@ -309,8 +317,13 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
   </dl>
 </section>
 
+<section id="replicas">
+  <h2><span class="num">17</span>Anexo: todas las cifras por réplica</h2>
+{{REPLICAS}}
+</section>
+
 <section id="tecnico">
-  <h2><span class="num">16</span>Anexo técnico</h2>
+  <h2><span class="num">18</span>Anexo técnico</h2>
 {{TECNICO}}
 </section>
 
