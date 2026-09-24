@@ -55,6 +55,17 @@ https://github.com/AFMMenchacalab/pipeline-migracion-celular/releases/tag/report
 - [ ] Clasificador de mitosis (para linajes confiables) y configuración genérica para el microscopio propio
   (DPC, 0.216 um/px, reducción 2x, corrección de viñeteado).
 - ⚠️ `.git` vive dentro de la carpeta de Syncthing: no hacer commits desde las dos PCs a la vez.
+- ⚠️ **Syncthing (revisado el 2026-09-24 04:30)**:
+  - La carpeta "Personal" tiene la ruta `home/alexflores/syncthing/Personal` SIN `/` inicial; como Syncthing
+    arranca en `/home/alexflores`, sincroniza `~/home/alexflores/syncthing/Personal` (juego/, persona3...),
+    NO `~/syncthing/Personal` (zelda3-android/, github-recovery-codes.txt, que no tienen copia en otro equipo).
+    Se PAUSÓ la carpeta a pedido del usuario; no se cambió la ruta ni se movió nada. Arreglo propuesto
+    (sin borrar): pausar, copiar el contenido sincronizado (con .stfolder) a ~/syncthing/Personal, poner la
+    ruta absoluta y reanudar.
+  - Microscopio: homelab conectado pero no pide datos (0 MB/s, 69%, 19 GB pendientes) -> revisar en homelab
+    si la carpeta está pausada, con error o el disco lleno. La laptop ("Alex fedora") no se conecta desde el 22/09.
+  - La PC quedó encendida con la suspensión bloqueada (`systemd-inhibit ... syncthing-espera`); para liberarla:
+    `pkill -f syncthing-espera` o reiniciar.
 
 ---
 
