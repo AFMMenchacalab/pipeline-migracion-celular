@@ -202,7 +202,7 @@ def seccion_cellpose():
     s.append("<p><b>Por qué es mejor Cellpose-SAM para este trabajo.</b> Primero, la atención le permite usar el contexto de todo el bloque y no solo el vecindario inmediato. Eso ayuda a decidir dónde termina una célula y empieza otra cuando se tocan o cuando el borde es tenue, como en brightfield. Segundo, el preentrenamiento de SAM le da una noción general de qué es un «objeto». Por eso, según sus autores, generaliza a tipos de imagen que no vio al entrenarse con una precisión comparable a la de anotadores humanos (Pachitariu, Rariden y Stringer, 2025). Tercero, al no depender del diámetro ni del orden de los canales, el mismo modelo sirve sin ajustes para brightfield, fluorescencia de núcleos y contraste de fase, que son las tres modalidades de este trabajo.</p>")
     if c:
         a, b = c["cellpose3"], c["cellpose_sam"]
-        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p = {fp(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 10).</p>")
+        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p = {fp(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 12).</p>")
     s.append("</div>")
     return "\n".join(s)
 
@@ -423,6 +423,9 @@ def seccion_camad(vca):
     peli = csv("camad", "estadisticas", vca, "por_pelicula.csv")
     omni = csv("inferencia", "camad", "omnibus_experimentos.csv")
     mix = csv("inferencia", "camad", "modelo_mixto_vs_vidrio.csv")
+    if peli is None or not (RES / "figuras" / "camad_condiciones.png").exists():
+        return ('<div class="aviso texto"><strong>En proceso</strong><p>La segmentación de los 9438 cuadros de CAMAD '
+                'todavía está corriendo. Esta sección se completa automáticamente cuando termine.</p></div>')
     s.append("<p>En CAMAD las células se filmaron durante las primeras 5 horas después de sembrarlas en un medio sin suero sobre cinco superficies distintas. Es la etapa en que se adhieren, se aplanan y empiezan a moverse. Para que los números sean comparables con el dataset brightfield, las medidas de persistencia usan también un paso de 5 minutos (una de cada diez imágenes).</p>")
     s.append("</div>")
     vids = [("camad_exp14.mp4", "Vidrio (exp14)"), ("camad_exp01.mp4", "Matrigel (exp1)"), ("camad_exp12.mp4", "Colágeno I (exp12)"),
@@ -503,6 +506,67 @@ def seccion_whad():
     return "\n".join(s)
 
 
+def seccion_linajes():
+    r = csv("linajes", "resumen.csv")
+    c = csv("linajes", "control.csv")
+    if r is None:
+        return ""
+    ndiv = int(r.divisiones.sum())
+    horas = r.horas_celula.sum()
+    esperadas = horas * np.log(2) / 30
+    s = ['<div class="texto">',
+         "<p>El programa puede ponerle a cada célula una <b>etiqueta</b> que se conserva mientras se la sigue y, si se divide, pasarles a sus hijas una etiqueta derivada: las hijas de la célula 12 son la 12.1 y la 12.2, las de la 12.1 serían 12.1.1 y 12.1.2, y así se arma el <b>árbol genealógico</b>. Lo difícil es detectar con certeza <i>cuándo</i> una célula se divide.</p>",
+         "<p>Para eso usamos el canal de núcleos. En brightfield una célula que se divide se redondea y sus hijas quedan pegadas, así que no se distingue de dos vecinas. Regla usada: aparecen dos núcleos junto a donde estaba el núcleo madre; cada uno tiene aproximadamente la mitad de su área, porque el material genético se reparte; ambos siguen existiendo por separado al menos 30 minutos y se alejan entre sí; y la madre era un núcleo compacto, no uno lobulado. Además, una célula recién nacida no puede volver a dividirse en menos de 15 horas, porque el ciclo celular de MDA-MB-231 dura más de 20 h.</p>",
+         "</div>"]
+    s.append(video("videos/linajes.mp4", "<b>Etiquetas y linajes en el video con más divisiones.</b> Izquierda, núcleos; derecha, brightfield. Cada punto es una célula; en color, las que pertenecen a un linaje con una división detectada, con su etiqueta. Las dos hijas comparten el color de su madre."))
+    s.append(figura("figuras/linaje_mosaico_divisiones.png", "<b>Doce divisiones detectadas, elegidas al azar</b>, de 10 minutos antes a 10 minutos después. Las divisiones reales se reconocen por el núcleo muy brillante y compacto (cromatina condensada) que se separa en dos núcleos pequeños. Las detecciones falsas suelen ser núcleos tenues o fuera de foco."))
+    s.append(figura("figuras/linaje_arboles.png", "<b>Ejemplos de árboles genealógicos.</b> El eje vertical es el tiempo; cada línea es una célula y cada bifurcación una división. En 8.3 horas cada linaje tiene como máximo una división; con videos más largos los árboles tendrían varios niveles."))
+    s.append('<div class="texto">')
+    s.append(f"<p><b>Qué tan bien funciona.</b> Se detectaron {ndiv} divisiones en {f(horas / 1000, 1)} mil horas-célula de seguimiento. Si las MDA-MB-231 se duplican cada ~30 horas, se esperarían unas {f(esperadas, 0)}, así que el detector encuentra solo una fracción de las divisiones (es deliberadamente conservador). En la inspección visual de ejemplos al azar, aproximadamente la mitad de las detecciones son divisiones claras.")
+    if c is not None and len(c):
+        s.append(f" Antes de aplicar la restricción del ciclo celular aparecían {int(c.segunda_generacion_imposibles.iloc[0])} «divisiones» de células recién nacidas, que son imposibles y confirman que parte de las detecciones son errores.")
+    s.append("</p><p><b>Conclusión:</b> el etiquetado y la construcción de árboles funcionan; la detección automática de mitosis todavía es un prototipo. Para que sea confiable habría que entrenar un clasificador de mitosis con ejemplos etiquetados a mano (unas pocas centenas bastan), filmar con más frecuencia (la división dura 30–60 minutos) o usar un marcador de ciclo celular. Con eso se podrían medir, por ejemplo, si las células hermanas se mueven de forma parecida o si la división cambia la persistencia.</p></div>")
+    return "\n".join(s)
+
+
+def seccion_agresividad(vbf):
+    """Qué dicen (y qué no) estos datos sobre la hipótesis de que el movimiento
+    distingue células más y menos agresivas, y cuántas réplicas harían falta."""
+    from statsmodels.stats.power import TTestIndPower
+    pe = csv("bf", "estadisticas", vbf, "por_pelicula.csv")
+    s = ['<div class="texto">',
+         "<p>La hipótesis de fondo del proyecto es que una célula de cáncer más agresiva se puede distinguir de una menos agresiva, o de una no tumoral, analizando cómo se mueve. Los resultados son <b>compatibles con esa idea y muestran que es factible medirla</b>, pero todavía no la demuestran. Para demostrarla hay que comparar líneas de distinta agresividad filmadas en las <i>mismas</i> condiciones: mismo sustrato, medio, microscopio e intervalo entre fotos. Por ejemplo MDA-MB-231 (muy invasiva), MCF7 (tumoral, poco invasiva) y MCF10A (epitelio mamario no tumoral).</p>",
+         "<p><b>Qué no permiten estos datos.</b> En brightfield y en CAMAD solo hay MDA-MB-231. WHAD incluye MCF10A y MCF7, pero es un ensayo de cierre de herida colectivo, con otro microscopio y muy pocas posiciones. Comparar entre datasets mezclaría el efecto de la línea celular con todo lo demás: las mismas MDA-MB-231 se mueven más rápido en plástico con suero que en las primeras horas sin suero de CAMAD.</p>",
+         "<p><b>Qué sí muestran.</b> (1) El análisis mide con precisión conocida, validada contra núcleos y contra anotación manual. (2) Algunas medidas varían muy poco entre campos de la misma condición, y eso las hace buenas candidatas para distinguir condiciones. En particular la EAD₁ corregida, que varía apenas unas milésimas entre videos (tabla). (3) Cuando en un mismo campo conviven tipos celulares distintos, sus firmas de movimiento difieren mucho: en CAMAD exp4 hay muchas células pequeñas y redondas (probablemente macrófagos) que casi no se desplazan, mientras las MDA-MB-231 avanzan varias veces más rápido. (4) En WHAD, las MCF7 con SEMA6D sobreexpresado, un fenotipo más migratorio, desprenden más células; va en la dirección esperada, aunque es una sola posición.</p>",
+         "</div>"]
+    if pe is not None:
+        pw = TTestIndPower()
+        filas = []
+        for m, nombre, difs, rel in (("rapidez_um_min", "Rapidez", (0.3, 0.5), True),
+                                     ("ead1_ens_corr", "EAD₁ corregida", (0.01, 0.02), False),
+                                     ("cos_giro_medio", "Coseno medio del giro", (0.05, 0.10), False),
+                                     ("prw_P_min", "Persistencia P", (0.3, 0.5), True),
+                                     ("aspect_ratio", "Alargamiento", (0.1, 0.2), True)):
+            mu, sd = pe[m].mean(), pe[m].std()
+            celdas = []
+            for d in difs:
+                delta = d * mu if rel else d
+                try:
+                    n = pw.solve_power(effect_size=delta / sd, alpha=0.05, power=0.8)
+                    n = 2 if not np.isfinite(n) else int(np.ceil(max(n, 2)))
+                except Exception:
+                    n = 2
+                celdas.append((f"{int(d * 100)}%" if rel else f"{d:g}", n))
+            filas.append({"m": nombre, "v": f"{f(mu, 3)} ± {f(sd, 3)}",
+                          "a": f"{celdas[0][0]}: {celdas[0][1]}", "b": f"{celdas[1][0]}: {celdas[1][1]}"})
+        s.append('<div class="texto"><p>¿Cuántas réplicas biológicas (videos o experimentos independientes) por línea celular harían falta para detectar una diferencia, con 80% de probabilidad y α = 0.05? Cálculo con la variación entre videos medida en brightfield:</p></div>')
+        s.append(tabla(pd.DataFrame(filas), ["m", "v", "a", "b"], ["Medida", "Media ± desvío entre videos",
+                                                               "Diferencia: réplicas por grupo", "Diferencia: réplicas por grupo"],
+                       num=("v", "a", "b")))
+    s.append('<div class="texto"><p><b>Diseño propuesto para probar la hipótesis.</b> Filmar MDA-MB-231, MCF7 y MCF10A en el mismo experimento, sobre el mismo sustrato, con una imagen cada 1–2 minutos (para que el error de posición no tape la persistencia), un marcador nuclear y al menos 5 réplicas biológicas por línea. Después, combinar varias medidas de cada célula (rapidez, EAD, SE, acoplamiento rapidez–persistencia, forma) en un clasificador y evaluarlo dejando afuera réplicas completas. Así el acierto no se infla por aprender las particularidades de un video. Un enfoque similar, basado en la forma de células individuales, ya permitió predecir el potencial metastásico de líneas de cáncer (Wu et al., <i>Science Advances</i> 2020).</p></div>')
+    return "\n".join(s)
+
+
 def seccion_rendimiento():
     r = js("rendimiento", "rendimiento.json")
     if not r:
@@ -545,14 +609,14 @@ LIMITACIONES = """
 <li><b>Error de posición.</b> El centro calculado desde el contorno de toda la célula tiembla alrededor de 2 µm entre imágenes. Con pasos de 5 minutos eso oculta buena parte de la persistencia real. Las medidas con núcleos, o con pasos más largos, son más sensibles.</li>
 <li><b>Muestreo de 5 minutos en brightfield.</b> La persistencia de estas células dura unos pocos pasos. Para medirla bien harían falta imágenes cada 1 o 2 minutos.</li>
 <li><b>Referencias imperfectas.</b> La segmentación de núcleos también comete errores (núcleos en división o poco teñidos), y en CAMAD solo están dibujadas las células aisladas. Las métricas de validación son estimaciones, no verdades absolutas.</li>
-<li><b>Sin detección de mitosis.</b> Cuando una célula se divide, su trayectoria se corta o una de las hijas continúa la de la madre.</li>
+<li><b>Detección de mitosis todavía en prototipo</b> (sección 8): detecta una fracción de las divisiones y cerca de la mitad de sus detecciones son reales. Cuando una división no se detecta, la trayectoria se corta o una de las hijas continúa la de la madre.</li>
 <li><b>Identidad de exp8 y exp9 de CAMAD</b> sin confirmar, por eso se excluyeron de la comparación.</li>
 </ul>
 """
 
 PROXIMOS = """
 <ul>
-<li>Usar el canal de núcleos para detectar mitosis (la cromatina condensada se ve más brillante y pequeña) y separar las trayectorias de madres e hijas.</li>
+<li>Convertir el detector de divisiones en un clasificador de mitosis entrenado con unas pocas centenas de ejemplos etiquetados a mano sobre el canal de núcleos, para tener árboles genealógicos confiables y estudiar si las células hermanas se mueven parecido.</li>
 <li>Reducir el error de posición con un suavizado de trayectorias basado en el propio modelo de caminata persistente (filtro de Kalman), y medir cuánto mejora la sensibilidad de la EAD.</li>
 <li>Pedir a los autores de CAMAD la planilla de experimentos para confirmar qué células se filmaron en exp8 y exp9 y el orden real de los frames con relleno negro.</li>
 <li>Para experimentos propios: filmar cada 1–2 minutos, con al menos 5 réplicas biológicas por condición, y agregar un marcador nuclear. Con eso tanto la entropía como las comparaciones entre condiciones ganarían mucha potencia.</li>
@@ -645,8 +709,8 @@ def main():
         "FECHA": fecha, "HALLAZGOS": hallazgos(vbf, vca), "TARJETAS_DATOS": tarjetas_datos(),
         "CELLPOSE": seccion_cellpose(),
         "VALIDACION": seccion_validacion(), "SIMULACIONES": seccion_simulaciones(),
-        "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "RESULTADOS_CAMAD": seccion_camad(vca),
-        "RESULTADOS_WHAD": seccion_whad(), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
+        "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "LINAJES": seccion_linajes(), "RESULTADOS_CAMAD": seccion_camad(vca),
+        "RESULTADOS_WHAD": seccion_whad(), "AGRESIVIDAD": seccion_agresividad(vbf), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
         "TECNICO": seccion_tecnico(vbf, vca),
     }
     for k, v in rep.items():

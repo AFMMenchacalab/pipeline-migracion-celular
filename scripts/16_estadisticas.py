@@ -53,9 +53,11 @@ from lib.trayectorias import tabla_segmentos  # noqa: E402
 
 PARAMS = {
     # paso: frames entre puntos del análisis (Delta = paso*dt = 5 min en ambos)
-    "bf": dict(paso=1, msd_max_lag=60, alfa_corto=(5, 30), alfa_largo=(60, 240)),
-    "sirdna": dict(paso=1, msd_max_lag=60, alfa_corto=(5, 30), alfa_largo=(60, 240)),
-    "camad": dict(paso=10, msd_max_lag=300, alfa_corto=(0.5, 5), alfa_largo=(30, 120)),
+    # max_hueco: huecos (en frames) que se interpolan; en CAMAD hasta 10 frames
+    # = 5 min = un paso de análisis (en BF 3 frames, como el gap-closing)
+    "bf": dict(paso=1, msd_max_lag=60, alfa_corto=(5, 30), alfa_largo=(60, 240), max_hueco=3),
+    "sirdna": dict(paso=1, msd_max_lag=60, alfa_corto=(5, 30), alfa_largo=(60, 240), max_hueco=3),
+    "camad": dict(paso=10, msd_max_lag=240, alfa_corto=(0.5, 5), alfa_largo=(30, 120), max_hueco=10),
 }
 COMUN = dict(
     min_vel=12,            # mínimo de velocidades por segmento para análisis por célula (1 h)
@@ -100,8 +102,8 @@ def analizar_pelicula(args):
     t0 = time.time()
 
     # --- segmentos a resolución completa (MSD) y al paso de análisis
-    segs_full = tabla_segmentos(tr, paso=1, min_puntos=4)
-    segs = tabla_segmentos(tr, paso=paso, min_puntos=P["min_vel"] + 1)
+    segs_full = tabla_segmentos(tr, paso=1, min_puntos=4, max_hueco=P["max_hueco"])
+    segs = tabla_segmentos(tr, paso=paso, min_puntos=P["min_vel"] + 1, max_hueco=P["max_hueco"])
 
     # ---------------------------------------------------------------- MSD / PRW
     msd, npares, ncel = M.tea_msd([s["xy"] for s in segs_full], P["msd_max_lag"])
@@ -313,7 +315,7 @@ def analizar_pelicula(args):
     sens = []
     if True:
         for pz in PASOS_SENSIB[ds]:
-            sg = tabla_segmentos(tr, paso=pz, min_puntos=10)
+            sg = tabla_segmentos(tr, paso=pz, min_puntos=10, max_hueco=P["max_hueco"])
             e1s, ses, pool = [], [], []
             for s in sg:
                 v = np.diff(s["xy"], axis=0) / (dt * pz)

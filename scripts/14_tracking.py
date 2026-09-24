@@ -54,6 +54,16 @@ def variantes(dataset):
         # 30 s/frame: huecos de hasta 6 frames (3 min) siguen siendo cortos
         for v in base.values():
             v["gap_frames"] = 6 if v["gap_frames"] == 3 else v["gap_frames"]
+        # Variante usada en CAMAD (decidida con el diagnóstico de exp1): Cellpose
+        # pierde células durante tramos largos (cuando la trayectoria se corta, la
+        # célula reaparece a ~5 um una mediana de 20 frames = 10 min después), y la
+        # penalización por tamaño fragmenta más las trayectorias porque durante la
+        # adhesión el área cambia mucho (62 trayectorias con tamaño vs 34 sin él en
+        # exp1). Se cierran huecos de hasta 20 frames (10 min) dentro de 8 um:
+        # a ~0.5 um/min una célula recorre ~5 um en 10 min, y en los campos
+        # dispersos la vecina más cercana está a ~50-65 um (en exp4/5, densos,
+        # a ~13-15 um; ahí el riesgo de confundir células es mayor y se advierte).
+        base["camad_huecos"] = dict(max_link_um=6.0, gap_frames=20, gap_link_um=8.0, size_weight=0.0, split_um=None)
     return base
 
 

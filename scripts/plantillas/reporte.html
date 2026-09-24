@@ -123,8 +123,10 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <li><a href="#persistencia">Cómo se mide la persistencia</a></li>
     <li><a href="#bf">Resultados: MDA-MB-231 en plástico</a></li>
     <li><a href="#nucleos">Células o núcleos: ¿da lo mismo?</a></li>
+    <li><a href="#linajes">Divisiones y árboles genealógicos</a></li>
     <li><a href="#camad">Resultados: distintos sustratos</a></li>
     <li><a href="#whad">Resultados: cierre de herida</a></li>
+    <li><a href="#agresividad">¿Distingue el movimiento la agresividad?</a></li>
     <li><a href="#rendimiento">Tiempo de cálculo y Raspberry Pi</a></li>
     <li><a href="#limitaciones">Limitaciones</a></li>
     <li><a href="#siguiente">Próximos pasos</a></li>
@@ -240,33 +242,43 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 {{BF_VS_NUC}}
 </section>
 
+<section id="linajes">
+  <h2><span class="num">8</span>Divisiones celulares y árboles genealógicos (prototipo)</h2>
+{{LINAJES}}
+</section>
+
 <section id="camad">
-  <h2><span class="num">8</span>Resultados: distintos sustratos (CAMAD)</h2>
+  <h2><span class="num">9</span>Resultados: distintos sustratos (CAMAD)</h2>
 {{RESULTADOS_CAMAD}}
 </section>
 
 <section id="whad">
-  <h2><span class="num">9</span>Resultados: cierre de herida (WHAD)</h2>
+  <h2><span class="num">10</span>Resultados: cierre de herida (WHAD)</h2>
 {{RESULTADOS_WHAD}}
 </section>
 
+<section id="agresividad">
+  <h2><span class="num">11</span>¿Sirve el movimiento para distinguir células más y menos agresivas?</h2>
+{{AGRESIVIDAD}}
+</section>
+
 <section id="rendimiento">
-  <h2><span class="num">10</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
+  <h2><span class="num">12</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
 {{RENDIMIENTO}}
 </section>
 
 <section id="limitaciones" class="texto">
-  <h2><span class="num">11</span>Limitaciones</h2>
+  <h2><span class="num">13</span>Limitaciones</h2>
 {{LIMITACIONES}}
 </section>
 
 <section id="siguiente" class="texto">
-  <h2><span class="num">12</span>Próximos pasos</h2>
+  <h2><span class="num">14</span>Próximos pasos</h2>
 {{PROXIMOS}}
 </section>
 
 <section id="glosario">
-  <h2><span class="num">13</span>Glosario</h2>
+  <h2><span class="num">15</span>Glosario</h2>
   <dl class="glosario">
     <dt>Brightfield</dt><dd>Microscopía de campo claro: la luz atraviesa la muestra sin tinción. Las células se ven por pequeños cambios de contraste.</dd>
     <dt>Contraste de fase</dt><dd>Técnica de microscopía que convierte diferencias de espesor de la célula en diferencias de brillo. Es la que usa CAMAD.</dd>
@@ -286,6 +298,8 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <dt>SE</dt><dd>Entropía del espectro de la velocidad (Liu et al. 2021): baja si la célula se mueve de forma sostenida, 1 si se mueve al azar.</dd>
     <dt>EAD, EAD₁, TL₁</dt><dd>Entropía de la distribución de ángulos de giro (Liu et al. 2024). EAD₁ usa pasos consecutivos; TL₁ es el tiempo hasta que la dirección se pierde por completo.</dd>
     <dt>EAD / SE corregida</dt><dd>La misma entropía dividida por el valor esperado para movimiento al azar con la misma cantidad de datos. Vale 1 para movimiento sin dirección preferida y menos de 1 si hay persistencia.</dd>
+    <dt>Mitosis / división</dt><dd>Proceso en el que una célula se divide en dos hijas. Antes de dividirse, el ADN se condensa y el núcleo se ve más compacto y brillante.</dd>
+    <dt>Linaje, árbol genealógico</dt><dd>Registro de qué célula proviene de cuál. Aquí cada célula recibe una etiqueta jerárquica: las hijas de la célula 12 son 12.1 y 12.2.</dd>
     <dt>Réplica</dt><dd>Unidad independiente para la estadística: aquí, cada video o experimento.</dd>
     <dt>IC95%</dt><dd>Intervalo de confianza del 95%: rango de valores compatibles con los datos. Se calcula remuestreando los videos (bootstrap).</dd>
     <dt>p y corrección de Holm</dt><dd>La p mide qué tan sorprendente sería el resultado si no hubiera efecto. Cuando se hacen muchas pruebas a la vez, la corrección de Holm evita encontrar diferencias por azar.</dd>
@@ -296,7 +310,7 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 </section>
 
 <section id="tecnico">
-  <h2><span class="num">14</span>Anexo técnico</h2>
+  <h2><span class="num">16</span>Anexo técnico</h2>
 {{TECNICO}}
 </section>
 
