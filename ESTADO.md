@@ -4,23 +4,49 @@
 
 ---
 
-## 🆕 PIPELINE v2 (noche del 2026-09-23 al 24)
+## 🆕 PIPELINE v2 (noche del 2026-09-23 al 24) — TERMINADO
 
-Detalle de cada cambio y su porqué: `CAMBIOS_v2.md`. Cómo correrlo: `README.md`.
-Repositorio (privado): https://github.com/AFMMenchacalab/pipeline-migracion-celular
+Detalle de cada cambio y su porqué: `CAMBIOS_v2.md`. Cómo correrlo: `README.md`
+(`bash scripts/correr_v2.sh`). Repositorio (privado):
+https://github.com/AFMMenchacalab/pipeline-migracion-celular
+**Reporte (HTML, privado; compartir desde "Share"): https://claude.ai/artifact/RHbrMPzxEw9b8xRXrHTiDS**
+Copia local: `resultados/v2/reporte_html/index.html`.
 
-- [x] **Datos nuevos**: núcleos SiR-DNA de los mismos 1600 campos BF (Zenodo 10074471,
-  `datasets/sirdna-mdamb231/`, MD5 verificado) -> referencia para validar segmentación y
-  tracking (reemplaza a LFCT). CAMAD procesado completo (30 s/frame, 0.117 um/px, 40x;
-  datos del paper Iheme et al. 2024). WHAD (cierre de herida) analizado con sus máscaras manuales.
-- [x] Segmentación GPU en fp16 (1.7 s/img vs 4.1 en bf16), flows guardados en `~/microscopio_cache/`.
-- [x] CAMAD a resolución reducida 4x: recall contra anotación manual 62.5% -> 87.2% (IoU 0.55 -> 0.72; 16 exp). Difíciles: exp11 y exp12 (células desenfocadas).
-- [x] Umbrales BF elegidos contra núcleos; variantes de tracking validadas contra tracking de núcleos.
-- [x] Entropías de Shannon (SE Liu 2021, EAD Liu 2024) con corrección por tamaño de muestra;
-  simulaciones que reproducen los valores publicados (`19_simulaciones_metodos.py`).
-- [x] Reporte: HTML con videos, fotos y simulador interactivo (`23_reporte_html.py`).
-- ⚠️ exp8/exp9 de CAMAD: identidad celular incierta (nombre sugiere RAW 264.7, morfología
-  parece MDA-MB-231) -> fuera de la comparación entre sustratos.
+### Datos nuevos
+- [x] Núcleos SiR-DNA de los mismos 1600 campos BF (Zenodo 10074471, MD5 verificado) -> referencia
+  para validar segmentación y tracking (reemplaza a LFCT).
+- [x] CAMAD completo (30 s/frame, 0.117 um/px, 40x, 5 h tras sembrar sin suero; paper Iheme et al. 2024).
+- [x] WHAD (cierre de herida MCF10A/MCF7) con sus máscaras manuales.
+
+### Validación
+- [x] Segmentación BF vs núcleos: F1 0.863 (precisión 0.90, recall 0.83). El máximo F1 (-1, 0.8) empató
+  con los umbrales por defecto; se eligieron los de por defecto por mayor precisión (regla de desempate).
+- [x] CAMAD vs anotación manual: recall 62.5% (resolución completa, v1) -> 87.2% (reducida 4x);
+  82% en validación dejando fuera cada experimento. Difíciles: exp11, exp12.
+- [x] Tracking BF vs núcleos: variante `dist_tam` -> 98.7% de eslabones correctos (v1: 97.9%; p = 3e-5).
+- [x] Simulaciones PRW: SE reproduce Liu 2021; corrección por tamaño de muestra de EAD/SE verificada.
+- [x] Cellpose-SAM vs Cellpose 3 (16 imágenes vs núcleos): F1 0.86 vs 0.81 (p = 0.003).
+
+### Resultados principales
+- BF (16 películas): rapidez 0.77 um/min (IC95% 0.70-0.84); P PRW 15 min; sigma 1.97 um;
+  EAD1 corr 0.980 y SE corr 0.967 (< 1 en las 16, p Holm < 0.001) -> persistencia débil pero real;
+  acoplamiento rapidez-persistencia; alineamiento de vecinas a < 50 um; densidad -> movimiento más
+  aleatorio (SE, rho 0.66, p Holm 0.046); la película explica 31% de la varianza de rapidez.
+- BF vs núcleos: rapidez concuerda (CCC 0.84); con núcleos (menos ruido) ~2x más persistencia a 1 paso
+  y aparece correlación débil de SE(t) entre vecinas (p = 0.001).
+- CAMAD: sobre Matrigel/colágeno las células se extienden (área 620-1335 um2) y sobre vidrio siguen
+  redondas (215-311 um2) en todos los experimentos (p exacta 0.036). Rapidez y persistencia: solo
+  tendencias (n = 2-4 por sustrato). exp4/5 con población mezclada (probables macrófagos).
+- Lección de método: la EAD mide concentración de ángulos, no dirección (los retrocesos por ruido
+  también la bajan) -> leerla junto con <cos giro>.
+- Linajes (prototipo): 93 divisiones con núcleos, ~50% reales a ojo; etiquetas 12 -> 12.1/12.2 y árboles.
+- Rendimiento: 1.8 s/imagen en GPU; Raspberry Pi 5 ~21 min/imagen (no factible entre fotos).
+
+### Pendiente / decisiones para el usuario
+- [ ] Compartir el reporte (Share) con quien corresponda antes del viernes.
+- [ ] Confirmar con los autores de CAMAD qué células se filmaron en exp8/9 y si exp4/5 tienen macrófagos.
+- [ ] Clasificador de mitosis (para linajes confiables) y configuración genérica para el microscopio propio
+  (DPC, 0.216 um/px, reducción 2x, corrección de viñeteado).
 - ⚠️ `.git` vive dentro de la carpeta de Syncthing: no hacer commits desde las dos PCs a la vez.
 
 ---

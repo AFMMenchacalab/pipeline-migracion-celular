@@ -75,6 +75,31 @@ el tracking los trata como tiempo perdido (`10_preparar_camad.py`).
   como trabajo futuro, usando el canal SiR-DNA, donde la cromatina
   condensada sí marca la mitosis.
 
+- **CAMAD usa su propia variante (`camad_huecos`)**: cierre de huecos de
+  hasta 20 frames (10 min) dentro de 8 µm y sin penalización de tamaño. El
+  diagnóstico en exp1 mostró que Cellpose pierde células durante tramos
+  largos (reaparecen a ~5 µm una mediana de 10 min después) y que la
+  penalización por tamaño fragmenta porque el área cambia mucho durante la
+  adhesión (62 → 34 → 36 trayectorias; largo medio 56 → 97 frames).
+- **Área mínima por dataset** antes del tracking (50 µm² BF, 20 µm² núcleos,
+  60 µm² CAMAD): objetos más chicos no pueden ser células.
+- **CAMAD exp4/exp5 (matriz RAW dispersa)**: 1000–1600 objetos/mm², 10× más
+  que el resto; en su mayoría células chicas y redondas (~15 µm) que casi no
+  se mueven, probablemente macrófagos de la preparación de la matriz. La
+  condición describe a la mezcla (advertido en el reporte).
+
+## 3b. Linajes (`26_linajes.py`, prototipo)
+
+Divisiones detectadas con el canal de núcleos: dos núcleos hijos junto a la
+madre, cada uno con 35–70% de su área y sumando ≤ 1.3 (conservación del
+material nuclear); ambos persisten ≥ 30 min y se separan ≥ 12 µm; la madre es
+compacta (solidez ≥ 0.9) y no tenía otro objeto pegado; y una célula recién
+nacida no se divide antes de 15 h. La primera versión (699 divisiones)
+estaba dominada por núcleos lobulados partidos en dos (visto en el mosaico) y
+producía linajes de 6 generaciones en 8 h. La versión final da 93
+divisiones, ~50% reales a ojo, y detecta una fracción de las ~630 esperadas.
+Etiquetas jerárquicas (12 → 12.1 / 12.2), árboles y video.
+
 ## 4. Estadística (`16_estadisticas.py`, `lib/motilidad.py`, `lib/entropia.py`)
 
 - **PRW con ruido de localización:** MSD = 4D[τ − P(1 − e^(−τ/P))] + 4σ².
@@ -107,7 +132,28 @@ el tracking los trata como tiempo perdido (`10_preparar_camad.py`).
   siendo la réplica, con bootstrap entre películas. En CAMAD se usan
   Kruskal-Wallis y ANOVA por permutación a nivel de experimento, más un
   modelo mixto con efecto aleatorio por experimento a nivel de célula, y
-  corrección de Holm entre métricas.
+  corrección de Holm entre métricas. El modelo mixto se ajusta sobre la
+  variable estandarizada; si la varianza entre experimentos sale 0
+  (matriz singular), se usa OLS con errores agrupados por experimento.
+  Con solo 2 experimentos de vidrio como referencia, esas p son optimistas.
+- **ICC entre películas por ANOVA (momentos)**: el REML de statsmodels no
+  convergía con varianzas del orden de 1e-4 y devolvía 0.
+- **Lección de método (CAMAD)**: con pasos de 30 s la EAD₁ baja aunque
+  ⟨cos giro⟩ sea ≈ 0 o negativo. El error de posición produce retrocesos
+  (giros de ~180°), y la EAD mide concentración de ángulos, no dirección.
+  Siempre hay que leerla junto a ⟨cos giro⟩.
+
+## 4b. Otros
+
+- `24_rendimiento.py`: Cellpose-SAM = 727 GFLOP por bloque de 256 px (18.2
+  TFLOP por imagen de 1 Mpx). GPU fp16 ~1.7 s/imagen; CPU (4 hilos) ~76 s;
+  Raspberry Pi 5 estimada en ~21 min/imagen. No es factible analizar en la
+  Pi entre fotos; la Pi debería adquirir y enviar las imágenes a la PC.
+- `25_cellpose3_vs_sam.py`: sobre 16 imágenes BF contra núcleos, Cellpose-SAM
+  F1 = 0.86 vs Cellpose 3 (cyto3) 0.81 (p = 0.003). Cellpose 3 es ~5× más
+  rápido en CPU (6.6 M vs 304.6 M parámetros).
+- Reporte en HTML (`23_reporte_html.py` + `scripts/plantillas/reporte.html`)
+  con videos, fotos, simulador interactivo de la EAD y glosario.
 
 ## 5. Rendimiento
 

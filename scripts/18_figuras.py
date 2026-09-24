@@ -428,8 +428,7 @@ def fig_camad_condiciones(var):
         S.puntos_con_media(ax, grupos, etiquetas, ic=[bootstrap_ic(g) if len(g.dropna()) > 1 else None for g in grupos])
         ax.set_title(lab)
         ax.axvline(len(conds) - 1.5, color=S.GRILLA, lw=1)
-    fig.suptitle("CAMAD: un punto = un experimento (n = 2-4 por sustrato). *exp8-9: identidad celular incierta, fuera de la comparación",
-                 y=1.0)
+    fig.suptitle("CAMAD: un punto = un experimento (n = 2-4 por sustrato). *exp8-9: identidad celular incierta, fuera de la comparación")
     S.guardar(fig, FIG / "camad_condiciones")
 
 

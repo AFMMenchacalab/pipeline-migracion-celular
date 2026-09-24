@@ -37,17 +37,14 @@ recrearlo en cada máquina.
 
 ```bash
 bash scripts/correr_v2.sh          # todo el pipeline v2 (≈3–4 h con GPU)
-bash scripts/correr_v2.sh bf       # solo brightfield + núcleos
-bash scripts/correr_v2.sh camad    # solo CAMAD
-venv/bin/python scripts/22_animaciones.py
-venv/bin/python scripts/23_reporte_html.py   # reporte en resultados/v2/reporte_html/index.html
+bash scripts/correr_v2.sh bf       # brightfield + núcleos + linajes
+bash scripts/correr_v2.sh camad    # CAMAD
+bash scripts/correr_v2.sh reporte  # simulaciones, WHAD, rendimiento y reporte HTML
 ```
 
-Antes de `correr_v2.sh` hay que correr la segmentación en GPU
-(`11_segmentar_gpu.py --dataset bf|sirdna|camad`) y, para CAMAD,
-`10_preparar_camad.py` y `12_ajuste_segmentacion_camad.py`. El orquestador
-espera a que terminen. Los resultados quedan en `resultados/v2/`, y los
-archivos pesados (máscaras, flujos, frames de CAMAD) en `~/microscopio_cache/`.
+El reporte queda en `resultados/v2/reporte_html/index.html` (con sus carpetas
+`figuras/`, `fotos/` y `videos/`). Los resultados quedan en `resultados/v2/`;
+los archivos pesados (máscaras, flujos, frames de CAMAD) en `~/microscopio_cache/`.
 
 ## Estructura
 
@@ -67,6 +64,9 @@ archivos pesados (máscaras, flujos, frames de CAMAD) en `~/microscopio_cache/`.
 | `21_whad.py` | Cinética de cierre de herida (WHAD) |
 | `22_animaciones.py` | Videos MP4 para el reporte |
 | `23_reporte_html.py` | Reporte HTML (plantilla en `scripts/plantillas/reporte.html`) |
+| `24_rendimiento.py` | FLOPs de Cellpose-SAM, tiempos en GPU/CPU y estimación para Raspberry Pi 5 |
+| `25_cellpose3_vs_sam.py` | Comparación con Cellpose 3 (requiere instalarlo aparte; ver encabezado) |
+| `26_linajes.py` | Prototipo: detección de divisiones con núcleos y árboles genealógicos |
 | `lib/` | Configuración, entropías, motilidad, tracking, métricas, inferencia, estilo |
 
 Cada decisión y su justificación están en `CAMBIOS_v2.md` y en el

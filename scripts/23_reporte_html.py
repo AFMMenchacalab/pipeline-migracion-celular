@@ -458,17 +458,27 @@ def seccion_camad(vca):
     s.append(figura("figuras/camad_condiciones.png",
                     "<b>Cada punto es un experimento.</b> La barra negra es el promedio del sustrato y la línea vertical su intervalo de confianza del 95%. Con dos a cuatro experimentos por sustrato, los intervalos son amplios."))
     s.append('<div class="texto">')
-    if omni is not None:
-        sig = omni[omni.anova_perm_p_holm < 0.05]
-        if len(sig):
-            s.append("<p>Después de corregir por comparaciones múltiples, los sustratos difieren significativamente en: " +
-                     "; ".join(NOMBRE.get(m, m) for m in sig.metrica) + ".</p>")
-        else:
-            s.append("<p>Con solo 2 a 4 experimentos por sustrato, ninguna diferencia entre sustratos resulta significativa a nivel de experimento después de corregir por comparaciones múltiples. Las diferencias que se ven en la figura deben tomarse como <b>tendencias a confirmar</b> con más experimentos.</p>")
-    if mix is not None and len(mix):
-        sigm = mix[mix.p_holm < 0.05]
-        s.append("<p>El modelo mixto, que usa los datos de cada célula pero respeta que las células de un mismo experimento no son independientes, " +
-                 ("encuentra diferencias respecto de vidrio en: " + "; ".join(f"{r.condicion} en {r.metrica}" for _, r in sigm.iterrows()) + "." if len(sigm) else "no encuentra diferencias significativas respecto de vidrio después de la corrección.") + "</p>")
+    # --- interpretación (números calculados de la tabla por experimento)
+    import itertools
+    def rango(cond, m, d=0):
+        x = peli[peli.condicion == cond][m]
+        a, b = f(x.min(), d), f(x.max(), d)
+        return f"{a}–{b}" if len(x) > 1 and a != b else a
+    def perm_exacta(m, menor=True):
+        q = peli[peli.condicion.isin(["Vidrio", "Matrigel", "Colágeno I"])]
+        v, g = q[m].to_numpy(), (q.condicion == "Vidrio").to_numpy()
+        obs = v[g].mean()
+        combs = list(itertools.combinations(range(len(v)), int(g.sum())))
+        c = sum((v[list(k)].mean() <= obs) if menor else (v[list(k)].mean() >= obs) for k in combs)
+        return c / len(combs)
+    s.append("<h3>Lo que se ve con claridad: las células se extienden sobre Matrigel y colágeno, no sobre vidrio</h3>")
+    s.append(f"<p>Sobre Matrigel y colágeno las células se aplanan y se extienden: su área media es de {rango('Matrigel', 'area_um2')} µm² y {rango('Colágeno I', 'area_um2')} µm², con circularidad de {rango('Matrigel', 'circularidad', 2)} y {rango('Colágeno I', 'circularidad', 2)} (formas alargadas e irregulares). Sobre vidrio sin recubrimiento, en un medio sin suero, siguen redondas: {rango('Vidrio', 'area_um2')} µm² y circularidad {rango('Vidrio', 'circularidad', 2)}. En los seis experimentos con recubrimiento el área es mayor y la circularidad menor que en los dos de vidrio. Es el resultado más extremo posible, con una prueba exacta de permutación a nivel de experimento de p = {f(perm_exacta('area_um2', True), 3)}, que además es el valor más chico que permiten 2 contra 6 experimentos. Es lo esperable: las proteínas de la matriz (laminina y colágeno) ofrecen puntos de anclaje a las integrinas, y sin ellas ni suero la célula casi no puede adherirse. El panel central de la figura temporal muestra cómo el área crece durante la primera hora sobre Matrigel y colágeno.</p>")
+    s.append(f"<h3>Movimiento y persistencia: tendencias, no diferencias firmes</h3>")
+    s.append(f"<p>La rapidez media fue de {rango('Matrigel', 'rapidez_um_min', 2)} µm/min sobre Matrigel, {rango('Colágeno I', 'rapidez_um_min', 2)} sobre colágeno, {rango('Matriz RAW confluente', 'rapidez_um_min', 2)} sobre la matriz confluente de macrófagos y {rango('Matriz RAW dispersa', 'rapidez_um_min', 2)} sobre la matriz dispersa. Sobre vidrio los dos experimentos no coinciden ({rango('Vidrio', 'rapidez_um_min', 2)}) y solo aportan 6 y 7 trayectorias. Además, en exp14 el coseno medio del giro es negativo: las células redondas y mal adheridas parecen «bambolearse» más que migrar.</p>")
+    s.append("<p>La persistencia medida con entropía (EAD₁ y SE corregidas, de 0.95 a 1.00) está cerca del movimiento al azar en todos los sustratos, sin diferencias detectables. Es coherente con el momento del experimento: durante las primeras horas tras la siembra y sin suero, las células exploran y se extienden más de lo que migran en una dirección.</p>")
+    s.append("<p>Con 2 a 4 experimentos por sustrato, las diferencias de movimiento entre sustratos no resultan significativas a nivel de experimento después de corregir por comparaciones múltiples (tabla anterior). El análisis por célula, que respeta que las células de un mismo experimento no son independientes, apunta en la misma dirección que la figura. Pero con solo 2 experimentos de vidrio como referencia sus valores de p son optimistas (tabla desplegable), así que conviene leerlo como una <b>tendencia a confirmar</b>.</p>")
+    s.append("<div class=\"aviso\"><strong>Población mezclada en la matriz dispersa (exp4 y exp5)</strong><p>En esos dos experimentos hay entre 1000 y 1600 objetos por mm², diez veces más que en el resto y muchos más de los que corresponden a las células sembradas. La mayoría son células pequeñas y redondas (~15 µm) que casi no se mueven, probablemente macrófagos que quedaron de la preparación de la matriz. Cellpose los segmenta bien, pero no hay forma de separarlos de las MDA-MB-231 sin un marcador. Los valores de esa condición describen a la mezcla, no a las MDA-MB-231.</p></div>")
+    s.append("<div class=\"explica\"><strong>Una lección de método: la EAD mide concentración, no dirección</strong><p>La figura de sensibilidad muestra algo que conviene tener presente al usar la EAD. Con pasos de 30 segundos la EAD₁ por célula baja, lo que en principio indicaría más persistencia, pero el coseno medio del giro se vuelve cero o negativo. El error de posición hace que dos pasos cortos consecutivos tiendan a apuntar en sentidos opuestos, y esos retrocesos (giros cercanos a 180°) también concentran la distribución de ángulos y bajan la entropía. Por eso la EAD siempre debe leerse junto con el coseno medio del giro, que distingue «sigue derecho» de «va y viene», y con un paso de análisis lo bastante largo.</p></div>")
     s.append("</div>")
     if mix is not None and len(mix):
         t = mix.copy()
@@ -478,7 +488,7 @@ def seccion_camad(vca):
                                 "aspect_ratio": "Alargamiento", "circularidad": "Circularidad"}).fillna(t.metrica)
         t["d"] = [f"{f(r.diferencia, 3)} [{f(r.ic95_inf, 3)}, {f(r.ic95_sup, 3)}]" for _, r in t.iterrows()]
         t["ph"] = [f'<span class="{"sig" if p < 0.05 else "nosig"}">{fp(p)}</span>' for p in t.p_holm]
-        s.append('<details><summary>Tabla del modelo mixto (diferencia de cada sustrato respecto de vidrio)</summary>')
+        s.append('<details><summary>Análisis por célula: diferencia de cada sustrato respecto de vidrio (modelo mixto u OLS con errores agrupados por experimento; con solo 2 experimentos de vidrio, las p son optimistas)</summary>')
         s.append(tabla(t, ["m", "condicion", "d", "ph"], ["Medida", "Sustrato", "Diferencia [IC95%]", "p Holm"], num=("d", "ph")))
         s.append("</details>")
     s.append(figura("figuras/camad_tiempo.png",
@@ -497,9 +507,9 @@ def seccion_whad():
                                                   d=("desprendidas_media", "mean"), n=("id", "size")).reset_index()
         s.append("<p>En este ensayo se raya una franja sin células en una capa confluente y se mide cuánto tarda en cerrarse. Usamos directamente los contornos de la herida dibujados por los autores del dataset, así que aquí no interviene nuestra segmentación. Las células se trataron con mitomicina C, que frena la división celular, de modo que el cierre se debe a migración.</p>")
         s.append("<p>" + " ".join(
-            f"{r.linea} {r.condicion}: frente a {f(r.v, 1)} µm/h, {f(r.c, 0)}% cerrado a las 12 h, {f(r.d, 1)} grupos desprendidos por imagen (n = {r.n} posiciones)."
+            f"{r.linea} {r.condicion}: frente a {f(r.v, 1)} µm/h, {f(r.c, 0)}% cerrado a las 12 h, {f(r.d, 1)} grupos desprendidos por imagen (n = {r.n} {'posición' if r.n == 1 else 'posiciones'})."
             for _, r in g.iterrows()) + "</p>")
-        s.append("<p>El patrón coincide con lo publicado para SEMA6D (Gunyuz et al. 2022): las MCF7 que sobreexpresan SEMA6D cierran la herida más despacio y desprenden muchas más células sueltas. Sin embargo, hay una sola posición con SEMA6D y todas las posiciones de una condición provienen del mismo pocillo, así que este resultado es solo descriptivo.</p>")
+        s.append("<p>Según lo publicado con estos mismos datos (Gunyuz et al. 2022; resumido en Iheme et al. 2024), la sobreexpresión de SEMA6D induce la migración de las MCF7 y las lleva a un fenotipo más «desprendido». Aquí se ve algo compatible: con SEMA6D hay muchas más células o grupos sueltos por imagen, y el cierre de la herida como lámina es más lento, como si las células migraran por separado en lugar de avanzar juntas. Sin embargo, hay una sola posición con SEMA6D y las posiciones de una misma condición provienen del mismo pocillo, así que este resultado es solo descriptivo.</p>")
     s.append("</div>")
     s.append(figura("figuras/whad_cierre.png",
                     "<b>Cierre de herida.</b> Izquierda: área de la herida relativa a la inicial; las líneas finas son posiciones y las gruesas el promedio por condición. Derecha: células o grupos desprendidos por imagen. MCF10A: CC control, NC Notch1 activo, C61 sin CYR61, N61 ambos. MCF7: LacZ control, SEMA6D sobreexpresado."))
@@ -688,13 +698,17 @@ def hallazgos(vbf, vca):
         t = t.set_index("metrica")
         cos_b, cos_n = t.loc["cos_giro_medio", "media_bf"], t.loc["cos_giro_medio", "media_nucleos"]
         h.append(f"<b>Medir células o núcleos da la misma imagen general, con una diferencia instructiva.</b> La rapidez coincide bien entre ambos métodos (concordancia {f(t.loc['rapidez_um_min', 'ccc_lin'], 2)}). En cambio, con los núcleos, cuya posición «tiembla» menos, se detecta casi el doble de persistencia entre pasos (coseno medio del giro {f(cos_n, 2)} contra {f(cos_b, 2)}), y aparece una correlación débil pero estadísticamente significativa entre la persistencia de células vecinas, que con brightfield no llega a verse.")
-    omni = csv("inferencia", "camad", "omnibus_experimentos.csv")
-    if omni is not None:
-        sig = omni[omni.anova_perm_p_holm < 0.05]
-        if len(sig):
-            h.append("<b>El sustrato cambia el movimiento</b> en: " + ", ".join(NOMBRE.get(m, m) for m in sig.metrica) + " (CAMAD, a nivel de experimento).")
-        else:
-            h.append("<b>Sustratos (CAMAD):</b> se ven tendencias entre vidrio, Matrigel, colágeno y matrices de macrófagos, pero con 2 a 4 experimentos por sustrato ninguna es estadísticamente segura. Hacen falta más réplicas.")
+    pc = csv("camad", "estadisticas", vca, "por_pelicula.csv")
+    if pc is not None:
+        a = pc.groupby("condicion").area_um2.mean()
+        h.append(f"<b>El sustrato cambia la forma de la célula en las primeras horas.</b> Sobre Matrigel y colágeno las MDA-MB-231 se extienden (área media ~{f(a.get('Matrigel'), 0)} y ~{f(a.get('Colágeno I'), 0)} µm²), mientras que sobre vidrio sin recubrimiento siguen redondas (~{f(a.get('Vidrio'), 0)} µm²), en todos los experimentos (p exacta = 0.036). Las diferencias de rapidez y persistencia entre sustratos son tendencias que requieren más experimentos.")
+    r_l = csv("linajes", "resumen.csv")
+    if r_l is not None:
+        h.append(f"<b>Etiquetas y árboles genealógicos (prototipo).</b> Cada célula recibe una etiqueta que pasa a sus hijas (12 → 12.1 y 12.2). Se detectaron {int(r_l.divisiones.sum())} divisiones con el canal de núcleos; la mitad de las revisadas a ojo son reales, así que para usarlo en serio falta un clasificador de mitosis.")
+    rr = js("rendimiento", "rendimiento.json")
+    if rr:
+        bf = [x for x in rr["tabla"] if x["imagen"].startswith("1024")][0]
+        h.append(f"<b>Tiempo de cálculo:</b> ~{f(bf['pc_gpu_fp16_s'] + bf['otros_pasos_pc_s'], 1)} s por imagen en la PC con GPU; en una Raspberry Pi 5 serían ~{f(bf['pi5_s'] / 60, 0)} min. No alcanza para analizar entre foto y foto, así que la Pi debería solo adquirir y enviar las imágenes a la PC.")
     return "\n".join(f"    <li>{x}</li>" for x in h)
 
 

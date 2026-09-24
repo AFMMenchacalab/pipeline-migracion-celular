@@ -105,10 +105,19 @@ def modelo_mixto(df, y, grupo_col, ref, exp_col="movie"):
     # no converge con varianzas del orden de 1e-4) y se vuelve a la escala original
     mu, sd = d["y"].mean(), d["y"].std()
     d["y"] = (d["y"] - mu) / sd
+    metodo = "modelo mixto (REML)"
     try:
         m = smf.mixedlm(f"y ~ C(g, Treatment('{ref}'))", d, groups=d["e"]).fit(reml=True, method="lbfgs")
     except Exception:
-        return None
+        # Si la varianza entre experimentos se estima en 0 el modelo mixto es
+        # singular; alternativa estándar: regresión lineal con errores estándar
+        # robustos agrupados por experimento (sigue sin tratar a las células
+        # como independientes).
+        try:
+            m = smf.ols(f"y ~ C(g, Treatment('{ref}'))", d).fit(cov_type="cluster", cov_kwds={"groups": d["e"]})
+            metodo = "OLS con errores agrupados por experimento"
+        except Exception:
+            return None
     filas = []
     ci = m.conf_int()
     for nombre in m.params.index:
@@ -117,9 +126,11 @@ def modelo_mixto(df, y, grupo_col, ref, exp_col="movie"):
         cond = nombre.split("[T.")[-1].rstrip("]")
         filas.append({"metrica": y, "condicion": cond, "vs": ref, "diferencia": m.params[nombre] * sd,
                       "ic95_inf": ci.loc[nombre, 0] * sd, "ic95_sup": ci.loc[nombre, 1] * sd, "p": m.pvalues[nombre],
-                      "convergio": bool(m.converged)})
-    var_exp = float(m.cov_re.iloc[0, 0]) * sd ** 2 if m.cov_re.size else np.nan
-    return pd.DataFrame(filas), var_exp, float(m.scale) * sd ** 2
+                      "metodo": metodo})
+    if metodo.startswith("modelo"):
+        var_exp = float(m.cov_re.iloc[0, 0]) * sd ** 2 if m.cov_re.size else np.nan
+        return pd.DataFrame(filas), var_exp, float(m.scale) * sd ** 2
+    return pd.DataFrame(filas), 0.0, float(m.scale) * sd ** 2
 
 
 def icc_peliculas(df, y, exp_col="movie"):
