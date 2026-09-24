@@ -208,7 +208,7 @@ def seccion_cellpose():
     s.append("<p><b>Por qué es mejor Cellpose-SAM para este trabajo.</b> Primero, la atención le permite usar el contexto de todo el bloque y no solo el vecindario inmediato. Eso ayuda a decidir dónde termina una célula y empieza otra cuando se tocan o cuando el borde es tenue, como en brightfield. Segundo, el preentrenamiento de SAM le da una noción general de qué es un «objeto». Por eso, según sus autores, generaliza a tipos de imagen que no vio al entrenarse con una precisión comparable a la de anotadores humanos (Pachitariu, Rariden y Stringer, 2025). Tercero, al no depender del diámetro ni del orden de los canales, el mismo modelo sirve sin ajustes para brightfield, fluorescencia de núcleos y contraste de fase, que son las tres modalidades de este trabajo.</p>")
     if c:
         a, b = c["cellpose3"], c["cellpose_sam"]
-        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p {peq(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 13).</p>")
+        s.append(f"<p>En nuestras imágenes brightfield, evaluadas contra los núcleos (una imagen por video, {c['n_imagenes']} en total), Cellpose-SAM obtuvo F1 = {f(b['f1'], 2)} contra {f(a['f1'], 2)} de Cellpose 3 (p {peq(c['p_wilcoxon_pareado_f1'])}, prueba pareada). También produjo menos células fusionadas ({b['fusiones']} contra {a['fusiones']}) y menos detecciones sin núcleo ({b['celulas_sin_nucleo']} contra {a['celulas_sin_nucleo']}). La contrapartida es el costo: Cellpose 3 es unas 5 veces más rápido en CPU. Esto es relevante para equipos sin GPU, como una Raspberry Pi (sección 15).</p>")
     s.append("</div>")
     return "\n".join(s)
 
@@ -675,14 +675,117 @@ def seccion_usos(vbf):
          "</ul>",
          "<p><b>Preguntas de investigación que esto permite responder</b>, con los mismos scripts:</p>",
          "<ul>",
-         "<li><b>¿Una condición cambia la migración?</b> (fármaco, sustrato, silenciamiento de un gen, línea celular). Se compara la tabla por réplica entre condiciones, como se hizo con los sustratos de CAMAD. Las medidas más estables entre réplicas (EAD₁, SE) necesitan menos réplicas para detectar un efecto (sección 12).</li>",
+         "<li><b>¿Una condición cambia la migración?</b> (fármaco, sustrato, silenciamiento de un gen, línea celular). Se compara la tabla por réplica entre condiciones, como se hizo con los sustratos de CAMAD. Las medidas más estables entre réplicas (EAD₁, SE) necesitan menos réplicas para detectar un efecto (sección 14).</li>",
          "<li><b>¿Cuándo cambia?</b> Las series en el tiempo permiten ubicar el momento en que la persistencia o la rapidez cambian, por ejemplo tras un estímulo, como en el análisis de Liu et al. (2021) de células que pasan por canales.</li>",
          "<li><b>¿Hay subpoblaciones?</b> Con la tabla por célula se pueden agrupar células por su firma de movimiento y forma (por ejemplo, rápidas y alargadas contra lentas y redondas).</li>",
          "<li><b>¿Las células se coordinan?</b> Alineamiento entre vecinas y correlación de persistencia entre pares, según densidad o condición.</li>",
+         "<li><b>¿Qué formas adoptan y cuándo cambian?</b> Mapa de formas, arquetipos geométricos y transiciones entre ellos (sección 9): por ejemplo, si un tratamiento empuja a las células hacia el estado «sólido» o cambia la proporción de husos y formas ramificadas.</li>",
+         "<li><b>¿Qué papel juegan el ciclo celular y el núcleo?</b> Con un marcador nuclear, el contenido de ADN y la posición del núcleo se cruzan con el movimiento (sección 10).</li>",
          "<li><b>¿El movimiento distingue la agresividad?</b> Ver la sección siguiente.</li>",
          "</ul>",
          "<p><b>Recomendaciones para adquirir datos propios</b> (surgen de lo aprendido aquí): una imagen cada 1–2 minutos, para que el error de posición no oculte la persistencia; campos con densidad moderada; al menos 5 réplicas biológicas (días o placas distintos) por condición; si es posible, un marcador nuclear, que habilita la validación automática y los linajes; y anotar siempre la calibración (µm por píxel e intervalo). Con esas condiciones el pipeline se aplica con cambios mínimos de configuración.</p>",
          "</div>"]
+    return "\n".join(s)
+
+
+def seccion_formas():
+    pr = csv("morfoespacio", "pruebas_bf.csv")
+    cc = csv("morfoespacio", "correlacion_cruzada_bf.csv")
+    ct = csv("morfoespacio", "camad_por_tiempo.csv")
+    arq = csv("arquetipos", "arquetipos.csv")
+    fr = csv("arquetipos", "friedman.csv")
+    T = csv("arquetipos", "transiciones.csv")
+    if pr is None or arq is None:
+        return ""
+    P = pr.set_index("prueba")
+    s = ['<div class="texto">',
+         "<p>Las máscaras guardan el contorno de cada célula en cada imagen, así que se puede estudiar la forma con tanto detalle como el movimiento. Hicimos tres cosas: un <b>mapa de formas</b> con la frontera de la transición «sólido–fluido» de la literatura, una <b>clasificación en arquetipos geométricos</b> y la relación de ambos con el movimiento.</p>",
+         "<h3>Índice de forma y transición sólido–fluido</h3>",
+         "<p>El índice de forma q = perímetro / √área vale 3.54 para un círculo y crece cuanto más alargada o irregular es la célula. En tejidos epiteliales se observó que q ≈ 3.81 separa un estado «sólido» o atascado (células compactas, casi quietas) de uno «fluido» (células alargadas que migran) (Bi et al., <i>Nat Phys</i> 2015; Park et al., <i>Nat Mater</i> 2015). Esa frontera se dedujo para monocapas confluentes, y además el perímetro digital puede inflar q un 2–4%, así que aquí se usa como referencia orientativa.</p>",
+         f"<p><b>Resultado:</b> la rapidez muestra un salto justo alrededor de esa frontera. Las células con q ≤ 3.8 (casi redondas) se mueven a ~0.5 µm/min y al pasar a q ≈ 4 la rapidez sube a ~0.8 µm/min; más allá sigue creciendo, pero despacio. Dentro de cada película, las observaciones «fluidas» (q > 3.81) son en mediana {f(P.loc['rapidez(q>3.81) - rapidez(q<=3.81)', 'mediana'], 2)} µm/min más rápidas que las «sólidas», en todas las películas (p Holm {peq(P.loc['rapidez(q>3.81) - rapidez(q<=3.81)', 'p_holm'])}). En cambio, la persistencia paso a paso <b>no</b> depende de q (ρ = {f(P.loc['rho_q_cosgiro', 'mediana'])}). La forma indica <i>cuánto</i> se mueve una célula, pero no <i>qué tan derecho</i> va.</p>",
+         f"<p><b>Las células avanzan a lo largo de su eje mayor.</b> El ángulo entre la dirección de movimiento y el eje mayor es menor que al azar (⟨|cos|⟩ supera el valor de azar en {f(P.loc['<|cos(mov, eje)|> - 2/pi', 'mediana'], 2)}; p Holm {peq(P.loc['<|cos(mov, eje)|> - 2/pi', 'p_holm'])}), y tanto más cuanto más alargadas son (ρ = {f(P.loc['rho_alarg_coseje', 'mediana'])}).</p>"]
+    if cc is not None:
+        m = cc.groupby("lag")["corr"].mean()
+        s.append(f"<p><b>La forma se adelanta al movimiento.</b> La correlación entre el alargamiento de una célula en un instante y su rapidez es {f(m.loc[0])} en el mismo paso, se mantiene en {f(m.loc[1])} cinco minutos después y todavía es {f(m.loc[6])} a los 30 minutos. En cambio, la rapidez actual no predice el alargamiento posterior (correlaciones ≈ 0 a desfases negativos). Primero la célula se estira y después avanza, lo que es coherente con que la protrusión del frente preceda al desplazamiento.</p>")
+    s.append("</div>")
+    s.append(figura("figuras/morfo_bf_mapa.png", "<b>Mapa de formas (brightfield).</b> Cada hexágono agrupa observaciones de células con forma parecida (índice de forma en el eje horizontal, solidez en el vertical: 1 = contorno sin entrantes). De izquierda a derecha: cuántas observaciones hay, rapidez mediana, persistencia (rojo = sigue derecho, azul = gira) y cuánto se mueve la célula a lo largo de su eje mayor. La línea punteada es q = 3.81."))
+    s.append(figura("figuras/morfo_bf_fase.png", "<b>Izquierda:</b> «diagrama de fase» densidad local contra forma, coloreado por rapidez. <b>Centro:</b> rapidez media según el índice de forma (gris: cada película; azul: todas); el salto está cerca de q ≈ 3.8. <b>Derecha:</b> correlación entre el alargamiento en un instante y la rapidez en instantes posteriores (desfase positivo) o anteriores (negativo)."))
+    s.append(figura("figuras/morfo_bf_eje.png", "<b>Izquierda:</b> ángulo entre la dirección de movimiento y el eje mayor según el alargamiento (la línea punteada es lo esperado al azar). <b>Derecha:</b> por película, fracción de observaciones «fluidas» contra rapidez media."))
+    if ct is not None:
+        g = ct.groupby(["condicion", "t_h"]).agg(q=("q_mediana", "mean"), fl=("frac_fluida", "mean")).reset_index()
+        def val(c, i, col):
+            x = g[g.condicion == c]
+            return x.iloc[i][col] if len(x) > i else np.nan
+        s.append(f'<div class="texto"><p><b>En CAMAD la transición se ve en el tiempo, y su ritmo depende del sustrato.</b> Sobre Matrigel y colágeno la mayoría de las células ya es «fluida» en la primera hora ({f(100 * val("Matrigel", 0, "fl"), 0)}% y {f(100 * val("Colágeno I", 0, "fl"), 0)}%) y la fracción sigue subiendo en la segunda ({f(100 * val("Matrigel", 1, "fl"), 0)}% y {f(100 * val("Colágeno I", 1, "fl"), 0)}%). Sobre la matriz confluente de macrófagos la transición es gradual ({f(100 * val("Matriz RAW confluente", 0, "fl"), 0)}% → {f(100 * val("Matriz RAW confluente", 4, "fl"), 0)}% en 5 h). Sobre vidrio casi no ocurre: {f(100 * val("Vidrio", 0, "fl"), 0)}% en la primera hora y ~{f(100 * val("Vidrio", 4, "fl"), 0)}% al final, con un índice de forma mediano de ~3.7 todo el tiempo. Es decir, el sustrato determina si las células cruzan al estado «fluido» y qué tan rápido lo hacen.</p></div>')
+        s.append(figura("figuras/morfo_camad_tiempo.png", "<b>CAMAD:</b> distribución de formas de la población en tres momentos (filas) para cada sustrato (columnas). La línea punteada es q = 3.81; abajo a la derecha, la mediana de q."))
+    # arquetipos
+    s.append('<h3>Arquetipos de forma: agrupar morfologías parecidas y describirlas con una geometría</h3><div class="texto">')
+    s.append(f"<p>Para cada célula tomamos su contorno, lo centramos, lo llevamos a un mismo tamaño y lo giramos para que su eje mayor quede horizontal (y su lado más «cargado» siempre del mismo lado). Así, dos células con la misma forma dan el mismo contorno aunque tengan distinto tamaño u orientación. Cada contorno se describe con su radio en 64 direcciones y se descompone en <b>armónicos</b>, que son los números que definen la geometría: el primero mide si un extremo es más ancho (gota), el segundo el alargamiento (elipse o huso), el tercero la triangularidad, y los siguientes las protuberancias. Con esos descriptores agrupamos {len(arq)} arquetipos (mezcla de gaussianas sobre {f(arq.n.sum() / 1000, 0)} mil contornos) y a cada uno le asignamos la geometría simple que mejor lo describe, con reglas explícitas sobre los armónicos.</p>")
+    t = arq.copy()
+    t["porc"] = t.frac.map(lambda x: f"{f(100 * x, 0)}%")
+    t["al"] = t.alargamiento_med.map(lambda x: f(x, 1))
+    t["so"] = t.solidez_med.map(lambda x: f(x, 2))
+    t["qq"] = t.q_med.map(lambda x: f(x, 2))
+    t["v"] = t.rapidez_med.map(lambda x: f(x, 2))
+    t["c"] = t.cos_giro_med.map(lambda x: f(x, 2))
+    if T is not None:
+        TT = T.set_index(T.columns[0])
+        t["perm"] = [f(5 / (1 - TT.loc[i, i]), 0) if i in TT.index else "–" for i in t.id]
+    s.append("</div>")
+    s.append(tabla(t, ["id", "nombre", "porc", "al", "so", "qq", "v", "c", "perm"],
+                   ["", "Geometría", "Frecuencia", "Alargamiento", "Solidez", "Índice q", "Rapidez (µm/min)", "⟨cos giro⟩", "Permanencia (min)"],
+                   num=("porc", "al", "so", "qq", "v", "c", "perm")))
+    s.append(figura("figuras/arq_formas.png", "<b>Los arquetipos de forma</b>, ordenados de más lentos a más rápidos. En azul, la forma media del grupo; en gris, 25 células del grupo; en naranja punteado, la geometría simple propuesta (superelipse, gota o triángulo redondeado ajustados a la forma media)."))
+    pf = fr.set_index("medida").p if fr is not None else None
+    s.append('<div class="texto">')
+    s.append(f"<p><b>Qué muestran.</b> La forma se relaciona con el movimiento de manera consistente en las 16 películas (prueba de Friedman con las películas como réplicas: rapidez p {peq(pf.loc['rapidez'])}, persistencia p {peq(pf.loc['cos_giro'])}). La rapidez crece de las formas redondas a las alargadas: el círculo (F1) es el más lento y los husos muy alargados y las formas ramificadas, los más rápidos. <b>La persistencia, en cambio, no es monótona.</b> Es máxima para las elipses de alargamiento moderado (≈ 2:1) y cae tanto en las redondas como en las muy alargadas o ramificadas. Una interpretación posible es que una célula con varias prolongaciones tiene varios «frentes» que compiten, avanza rápido pero cambia de rumbo a menudo. No encontramos este patrón no monótono descrito explícitamente para MDA-MB-231, aunque la competencia entre protrusiones está descrita en otros tipos celulares; conviene confirmarlo.</p>")
+    if T is not None:
+        s.append(f"<p><b>Las células cambian de forma, pero entre formas vecinas.</b> La matriz de transiciones muestra que en 5 minutos una célula casi siempre permanece en su arquetipo o pasa a uno parecido (círculo ↔ óvalo ↔ elipse; entre los husos; entre los triángulos). El círculo es el estado más estable: una célula redonda permanece así en promedio {f(5 / (1 - TT.loc['F1', 'F1']), 0)} minutos, contra 7–11 minutos para las demás formas.</p>")
+    s.append("<p><b>Vista desde la dirección de movimiento.</b> Si se promedian las formas girándolas según hacia dónde avanza cada célula, las rápidas son claramente más largas en la dirección de avance que las lentas, y el perfil es simétrico entre frente y cola. En promedio no aparece un frente ancho en abanico, sino una forma de huso, que es lo típico de la migración mesenquimal de MDA-MB-231.</p></div>")
+    s.append(figura("figuras/arq_movimiento.png", "<b>Izquierda y centro:</b> rapidez y persistencia de cada arquetipo (gris: películas; azul: promedio). <b>Derecha:</b> probabilidad de pasar de un arquetipo (fila) a otro (columna) en 5 minutos."))
+    s.append(figura("figuras/arq_frente_cola.png", "<b>Forma media vista desde la dirección de movimiento</b> (la flecha indica hacia dónde avanza) para el 25% más lento y el 25% más rápido de las observaciones, y el perfil del radio desde el frente (0°) hasta la cola (±180°)."))
+    s.append(figura("figuras/arq_camad.png", "<b>CAMAD:</b> proporción de cada familia de formas (los 9 arquetipos agrupados en 5) a lo largo de la adhesión. Sobre vidrio y sobre la matriz dispersa dominan las formas redondas; sobre Matrigel y colágeno aparecen en la primera hora las elípticas, triangulares y en huso."))
+    return "\n".join(s)
+
+
+def seccion_relaciones():
+    c = csv("descubrimiento", "cribado_correlaciones.csv")
+    h = csv("descubrimiento", "hallazgos_pruebas.csv")
+    r2 = csv("descubrimiento", "r2_modelos.csv")
+    if c is None or h is None:
+        return ""
+    H = h.set_index("hallazgo")
+    rep = c[c.replica & ~c.trivial]
+    s = ['<div class="texto">',
+         "<p>Además de las preguntas planteadas de antemano, buscamos de forma sistemática relaciones que no estábamos mirando. La ventaja de este dataset es que para cada célula, en cada instante, tenemos a la vez su contorno (brightfield) y su núcleo (fluorescencia). Eso permite cruzar movimiento, forma celular, forma del núcleo, <b>contenido de ADN</b> (que indica en qué fase del ciclo celular está la célula: ~1× en G1, ~2× en G2), la <b>posición del núcleo dentro de la célula</b> y el contacto con vecinas.</p>",
+         f"<p><b>Cómo evitamos hallazgos por azar.</b> Con muchas pruebas, alguna sale «significativa» por casualidad. Por eso: (1) buscamos en las 8 películas impares y exigimos que la relación se repita, con el mismo signo, en las 8 pares; (2) usamos las películas como réplicas y controlamos la tasa de falsos descubrimientos; (3) descartamos las relaciones triviales (una variable calculada a partir de la otra). De {len(c)} pares de variables probados, {int(c.replica.sum())} replicaron; {len(rep)} no son triviales, y la mayoría son esperables (por ejemplo, núcleos más grandes en células más grandes). Las que siguen son las que nos parecen más interesantes.</p>",
+         "</div>"]
+    s.append(figura("figuras/desc_hallazgos.png", "<b>Hallazgos de la búsqueda exploratoria.</b> Cada línea gris une los dos valores de una misma película. H1: probabilidad de dar media vuelta en el paso siguiente según el núcleo esté delante o detrás respecto de la dirección de avance. H2: rapidez de células con 1× y 2× de ADN, sin células redondeadas ni con cromatina muy condensada. H3: rapidez medida con el núcleo, para células libres y en contacto. A la derecha, el brillo del colorante de núcleos a lo largo de la película."))
+    s.append('<div class="texto">')
+    s.append(f"<p><b>H1. La posición del núcleo anticipa las reversas.</b> Cuando el núcleo está <i>delante</i> del centro de la célula respecto de la dirección en que avanza, la probabilidad de que la célula dé media vuelta en los 5 minutos siguientes es {f(H.loc['H1 núcleo delante -> más reversas', 'mediana_diferencia'] * 100, 0)} puntos porcentuales mayor que cuando está <i>detrás</i> (~38% contra ~26%). Ocurre en las {int(H.loc['H1 núcleo delante -> más reversas', 'peliculas_a_favor'])} películas (p {peq(H.loc['H1 núcleo delante -> más reversas', 'p_wilcoxon'])}). En promedio el núcleo va detrás en el 54–58% de los pasos. Que el núcleo se ubique en la parte trasera de una célula que migra es conocido en fibroblastos (revisión: <a href=\"https://pmc.ncbi.nlm.nih.gov/articles/PMC5995615/\">Nuclear positioning in migrating fibroblasts</a>). Lo que agregamos es su uso <b>predictivo</b>: medido solo con el contorno y un colorante nuclear, sin marcadores de polaridad, anticipa las reversas en células de cáncer de mama. En el modelo que intenta predecir el giro siguiente en películas que no vio, esta variable está entre las más útiles, después de la rapidez y el giro actuales.</p>")
+    s.append(f"<p><b>H2. Las células en fase G2 se mueven más despacio.</b> Las células con el doble de ADN son {f(-H.loc['H2 G2 más lentas que G1', 'mediana_diferencia'], 3)} µm/min más lentas que las de G1 (~8%) en {int(H.loc['H2 G2 más lentas que G1', 'peliculas_a_favor'])} de 16 películas (p {peq(H.loc['H2 G2 más lentas que G1', 'p_wilcoxon'])}), y ~{f(H.loc['H2b G2 más grandes que G1', 'mediana_diferencia'], 0)} µm² más grandes. Excluimos las células redondeadas y las de cromatina muy condensada para que el efecto no se deba a células a punto de dividirse, que se redondean y se detienen. <b>Esto contrasta con lo publicado:</b> un estudio con el reportero FUCCI en MDA-MB-231 encontró que G1 es más rápida solo en migración dirigida y no en migración al azar (<a href=\"https://www.biorxiv.org/content/10.1101/288183.full.pdf\">bioRxiv 288183</a>). Nuestros datos son de migración al azar, con 16 réplicas y decenas de miles de observaciones, y sí muestran el efecto. Es el candidato más claro a hallazgo nuevo, aunque nuestra clasificación del ciclo se basa en el contenido de ADN y no en un reportero de ciclo. Habría que confirmarlo con FUCCI.</p>")
+    s.append(f"<p><b>H3. El contacto con otra célula no las frena.</b> Las células que están tocando a una vecina se mueven {f(H.loc['H3 en contacto más rápidas (núcleo)', 'mediana_diferencia'], 3)} µm/min <i>más rápido</i> que las libres en {int(H.loc['H3 en contacto más rápidas (núcleo)', 'peliculas_a_favor'])} de 16 películas (p {peq(H.loc['H3 en contacto más rápidas (núcleo)', 'p_wilcoxon'])}), midiendo la rapidez con el núcleo para que la deformación del contorno al tocarse no la infle. Las células normales suelen frenar y cambiar de rumbo al chocar («inhibición de la locomoción por contacto»); que las MDA-MB-231 la tienen debilitada ya está reportado. Es una asociación: también puede ser que las células más rápidas simplemente se topen con más vecinas.</p>")
+    s.append(f"<p><b>Un hallazgo técnico útil.</b> El brillo del colorante de núcleos baja ~{f(-100 * H.loc['T1 brillo SiR-DNA a las 6-8 h / 0-2 h (fotoblanqueo)', 'mediana_diferencia'], 0)}% en 8 horas en todas las películas (fotoblanqueo). Cualquier medida basada en intensidad, como el contenido de ADN, debe normalizarse imagen por imagen, como hicimos aquí. La rapidez de las células, en cambio, no disminuye a lo largo de la película, así que no hay signos de daño por la iluminación.</p>")
+    if r2 is not None:
+        rr = r2.set_index(r2.columns[0]).iloc[:, 0]
+        s.append(f"<p><b>¿Cuánto se puede predecir?</b> Un modelo de aprendizaje automático (gradient boosting) entrenado con todas estas variables y evaluado en películas que no vio explica el {f(100 * rr.loc['rapidez_sig'], 0)}% de la variación en la rapidez del paso siguiente y el {f(100 * rr.loc['cos_giro_sig'], 0)}% del giro. Es poco, y eso también es un resultado: a escala de 5 minutos el movimiento de cada célula es en gran parte impredecible (estocástico), y las relaciones anteriores son tendencias estadísticas robustas, no reglas deterministas.</p>")
+    s.append("</div>")
+    s.append(figura("figuras/desc_importancia.png", "<b>Variables que más ayudan a predecir el giro del paso siguiente</b>, en películas que el modelo no vio durante el entrenamiento."))
+    if len(rep):
+        t = rep.head(25).copy()
+        nombres = {**NOMBRE, "cos_eje": "movimiento a lo largo del eje mayor", "q": "índice de forma", "nuc_area": "área del núcleo",
+                   "nuc_alargamiento": "alargamiento del núcleo", "nuc_solidez": "solidez del núcleo", "nuc_intensidad": "brillo del núcleo",
+                   "adn_rel": "contenido de ADN", "off_rel": "descentrado del núcleo", "nuc_frac_area": "núcleo / célula (área)",
+                   "cos_nucleo_mov": "núcleo respecto del avance", "t_h": "tiempo en la película", "dist_vecina_um": "distancia a la vecina",
+                   "densidad_local": "densidad local", "rapidez": "rapidez", "cos_giro": "⟨cos giro⟩", "alargamiento": "alargamiento",
+                   "solidez": "solidez", "area_um2": "área"}
+        t["A"] = t.a.map(nombres).fillna(t.a)
+        t["B"] = t.b.map(nombres).fillna(t.b)
+        t["r1"] = t.rho_desc.map(lambda x: f(x, 2))
+        t["r2"] = t.rho_val.map(lambda x: f(x, 2))
+        s.append("<details><summary><b>Las 25 relaciones no triviales más fuertes que replicaron</b> (correlación de Spearman mediana dentro de las películas de descubrimiento y de validación)</summary>")
+        s.append(tabla(t, ["A", "B", "r1", "r2"], ["Variable", "Variable", "ρ descubrimiento", "ρ validación"], num=("r1", "r2")))
+        s.append("</details>")
     return "\n".join(s)
 
 
@@ -796,6 +899,7 @@ LIMITACIONES = """
 
 PROXIMOS = """
 <ul>
+<li>Confirmar con el reportero de ciclo celular FUCCI que las células en G2 migran más despacio también en migración al azar (hallazgo H2), y probar si la posición del núcleo anticipa las reversas en otras líneas (H1).</li>
 <li>Convertir el detector de divisiones en un clasificador de mitosis entrenado con unas pocas centenas de ejemplos etiquetados a mano sobre el canal de núcleos, para tener árboles genealógicos confiables y estudiar si las células hermanas se mueven parecido.</li>
 <li>Reducir el error de posición con un suavizado de trayectorias basado en el propio modelo de caminata persistente (filtro de Kalman), y medir cuánto mejora la sensibilidad de la EAD.</li>
 <li>Pedir a los autores de CAMAD la planilla de experimentos para confirmar qué células se filmaron en exp8 y exp9 y el orden real de los frames con relleno negro.</li>
@@ -873,6 +977,12 @@ def hallazgos(vbf, vca):
     if fm is not None:
         r = fm.set_index(["forma", "movimiento"]).loc[("aspect_ratio", "rapidez_um_min")]
         h.append(f"<b>La forma predice parte del movimiento:</b> dentro de cada película, las células más alargadas se mueven más rápido y con más persistencia (ρ = {f(r.rho_mediana_dentro)} entre alargamiento y rapidez, p Holm {peq(r.p_holm)}), la firma de la polaridad frente–atrás. Se confirma con los núcleos.")
+    arq_ = csv("arquetipos", "arquetipos.csv")
+    if arq_ is not None:
+        h.append(f"<b>Mapa de formas y arquetipos.</b> La rapidez salta cuando la célula pasa de compacta a alargada, cerca del índice de forma 3.8 que marca la transición «sólido–fluido» en la literatura. La forma se adelanta al movimiento hasta 30 min. Las células se agrupan en {len(arq_)} arquetipos geométricos (círculo, óvalo, elipse, triángulos, husos, ramificada), y la persistencia es máxima en las elipses moderadas, no en las más alargadas.")
+    hp = csv("descubrimiento", "hallazgos_pruebas.csv")
+    if hp is not None:
+        h.append("<b>Relaciones nuevas en los datos:</b> el núcleo ubicado delante anticipa que la célula dará media vuelta (16 de 16 películas); las células en G2 (el doble de ADN) son ~8% más lentas, lo que contrasta con un estudio previo, y es el candidato más claro a hallazgo nuevo; y el contacto con vecinas no las frena.")
     pc = csv("camad", "estadisticas", vca, "por_pelicula.csv")
     if pc is not None:
         a = pc.groupby("condicion").area_um2.mean()
@@ -898,7 +1008,8 @@ def main():
         "FECHA": fecha, "HALLAZGOS": hallazgos(vbf, vca), "TARJETAS_DATOS": tarjetas_datos(),
         "CELLPOSE": seccion_cellpose(),
         "VALIDACION": seccion_validacion(), "SIMULACIONES": seccion_simulaciones(),
-        "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "LINAJES": seccion_linajes(), "RESULTADOS_CAMAD": seccion_camad(vca),
+        "RESULTADOS_BF": seccion_bf(vbf), "BF_VS_NUC": seccion_bf_vs_nuc(), "LINAJES": seccion_linajes(),
+        "FORMAS": seccion_formas(), "RELACIONES": seccion_relaciones(), "RESULTADOS_CAMAD": seccion_camad(vca),
         "RESULTADOS_WHAD": seccion_whad(), "AGRESIVIDAD": seccion_agresividad(vbf), "RENDIMIENTO": seccion_rendimiento(), "LIMITACIONES": LIMITACIONES, "PROXIMOS": PROXIMOS,
         "TECNICO": seccion_tecnico(vbf, vca), "REPLICAS": seccion_tablas_replica(vbf, vca), "USOS": seccion_usos(vbf),
     }

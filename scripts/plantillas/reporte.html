@@ -124,6 +124,8 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <li><a href="#bf">Resultados: MDA-MB-231 en plástico</a></li>
     <li><a href="#nucleos">Células o núcleos: ¿da lo mismo?</a></li>
     <li><a href="#linajes">Divisiones y árboles genealógicos</a></li>
+    <li><a href="#formas">Formas: mapa, transición y arquetipos</a></li>
+    <li><a href="#relaciones">Relaciones nuevas en los datos</a></li>
     <li><a href="#camad">Resultados: distintos sustratos</a></li>
     <li><a href="#whad">Resultados: cierre de herida</a></li>
     <li><a href="#usos">Qué datos entrega y cómo usarlos</a></li>
@@ -250,43 +252,53 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 {{LINAJES}}
 </section>
 
+<section id="formas">
+  <h2><span class="num">9</span>Formas celulares: mapa, transición sólido–fluido y arquetipos</h2>
+{{FORMAS}}
+</section>
+
+<section id="relaciones">
+  <h2><span class="num">10</span>Relaciones nuevas encontradas en los datos</h2>
+{{RELACIONES}}
+</section>
+
 <section id="camad">
-  <h2><span class="num">9</span>Resultados: distintos sustratos (CAMAD)</h2>
+  <h2><span class="num">11</span>Resultados: distintos sustratos (CAMAD)</h2>
 {{RESULTADOS_CAMAD}}
 </section>
 
 <section id="whad">
-  <h2><span class="num">10</span>Resultados: cierre de herida (WHAD)</h2>
+  <h2><span class="num">12</span>Resultados: cierre de herida (WHAD)</h2>
 {{RESULTADOS_WHAD}}
 </section>
 
 <section id="usos">
-  <h2><span class="num">11</span>Qué datos entrega el pipeline y cómo usarlos en la investigación</h2>
+  <h2><span class="num">13</span>Qué datos entrega el pipeline y cómo usarlos en la investigación</h2>
 {{USOS}}
 </section>
 
 <section id="agresividad">
-  <h2><span class="num">12</span>¿Sirve el movimiento para distinguir células más y menos agresivas?</h2>
+  <h2><span class="num">14</span>¿Sirve el movimiento para distinguir células más y menos agresivas?</h2>
 {{AGRESIVIDAD}}
 </section>
 
 <section id="rendimiento">
-  <h2><span class="num">13</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
+  <h2><span class="num">15</span>¿Cuánto tarda el análisis y dónde se puede correr?</h2>
 {{RENDIMIENTO}}
 </section>
 
 <section id="limitaciones" class="texto">
-  <h2><span class="num">14</span>Limitaciones</h2>
+  <h2><span class="num">16</span>Limitaciones</h2>
 {{LIMITACIONES}}
 </section>
 
 <section id="siguiente" class="texto">
-  <h2><span class="num">15</span>Próximos pasos</h2>
+  <h2><span class="num">17</span>Próximos pasos</h2>
 {{PROXIMOS}}
 </section>
 
 <section id="glosario">
-  <h2><span class="num">16</span>Glosario</h2>
+  <h2><span class="num">18</span>Glosario</h2>
   <dl class="glosario">
     <dt>Brightfield</dt><dd>Microscopía de campo claro: la luz atraviesa la muestra sin tinción. Las células se ven por pequeños cambios de contraste.</dd>
     <dt>Contraste de fase</dt><dd>Técnica de microscopía que convierte diferencias de espesor de la célula en diferencias de brillo. Es la que usa CAMAD.</dd>
@@ -308,6 +320,11 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
     <dt>EAD / SE corregida</dt><dd>La misma entropía dividida por el valor esperado para movimiento al azar con la misma cantidad de datos. Vale 1 para movimiento sin dirección preferida y menos de 1 si hay persistencia.</dd>
     <dt>Mitosis / división</dt><dd>Proceso en el que una célula se divide en dos hijas. Antes de dividirse, el ADN se condensa y el núcleo se ve más compacto y brillante.</dd>
     <dt>Linaje, árbol genealógico</dt><dd>Registro de qué célula proviene de cuál. Aquí cada célula recibe una etiqueta jerárquica: las hijas de la célula 12 son 12.1 y 12.2.</dd>
+    <dt>Índice de forma q</dt><dd>Perímetro dividido por la raíz del área: 3.54 para un círculo; crece cuanto más alargada o irregular es la célula.</dd>
+    <dt>Transición sólido–fluido (jamming)</dt><dd>Cambio de un estado en que las células están compactas y casi quietas («sólido») a uno en que son alargadas y migran («fluido»); en tejidos se asocia a q ≈ 3.81.</dd>
+    <dt>Arquetipo de forma</dt><dd>Grupo de células con formas parecidas, descrito por su forma promedio y una geometría simple (círculo, elipse, huso, triángulo...).</dd>
+    <dt>Armónicos</dt><dd>Descomposición del contorno en componentes: el 1.º mide si un extremo es más ancho, el 2.º el alargamiento, el 3.º la triangularidad y los siguientes las protuberancias.</dd>
+    <dt>Fase G1 / G2 del ciclo celular</dt><dd>G1: la célula tiene una copia de su ADN; G2: ya lo duplicó y se prepara para dividirse (el doble de ADN).</dd>
     <dt>Réplica</dt><dd>Unidad independiente para la estadística: aquí, cada video o experimento.</dd>
     <dt>IC95%</dt><dd>Intervalo de confianza del 95%: rango de valores compatibles con los datos. Se calcula remuestreando los videos (bootstrap).</dd>
     <dt>p y corrección de Holm</dt><dd>La p mide qué tan sorprendente sería el resultado si no hubiera efecto. Cuando se hacen muchas pruebas a la vez, la corrección de Holm evita encontrar diferencias por azar.</dd>
@@ -318,12 +335,12 @@ footer { margin-top: 70px; padding-top: 18px; border-top: 1px solid var(--line);
 </section>
 
 <section id="replicas">
-  <h2><span class="num">17</span>Anexo: todas las cifras por réplica</h2>
+  <h2><span class="num">19</span>Anexo: todas las cifras por réplica</h2>
 {{REPLICAS}}
 </section>
 
 <section id="tecnico">
-  <h2><span class="num">18</span>Anexo técnico</h2>
+  <h2><span class="num">20</span>Anexo técnico</h2>
 {{TECNICO}}
 </section>
 

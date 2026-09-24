@@ -48,6 +48,17 @@ https://github.com/AFMMenchacalab/pipeline-migracion-celular/releases/tag/report
   CAMAD: confinamiento sobre vidrio (MSD se aplana), subdifusivo en matriz dispersa, 1.0-1.8 en Matrigel/colágeno.
 - Forma vs movimiento (dentro de cada película): células más alargadas = más rápidas y persistentes
   (rho 0.27 con rapidez, p Holm < 0.001), confirmado con núcleos.
+- Morfoespacio (`27`): la rapidez sube de golpe cerca de q ≈ 3.8 (valor de la transición sólido–fluido
+  de Bi 2015/Park 2015); células "fluidas" (q > 3.81) +0.24 um/min vs "sólidas"; se mueven a lo largo de
+  su eje mayor; el alargamiento precede a la aceleración hasta ~30 min.
+- Arquetipos de forma (`29`): 9 grupos (círculo ... ramificada) nombrados por armónicos de Fourier;
+  la persistencia es máxima en elipses moderadas (no en las más alargadas); Friedman p 9e-21 (rapidez)
+  y 3e-14 (persistencia); una célula permanece ~19 min en "círculo".
+- Búsqueda exploratoria (`28`, `30`; descubrimiento en películas impares, validación en pares):
+  153 pares, 78 replican, 67 no triviales. H1: núcleo delante -> más medias vueltas (38% vs 26%,
+  16/16, p 3e-5). H2: células en G2 más lentas (-0.069 um/min, 13/16, p 0.002) y más grandes.
+  H3: el contacto no frena (núcleo +0.043 um/min, 13/16, p 0.003). T1: SiR-DNA pierde ~23% de brillo
+  en 8 h. Gradient boosting predice poco el paso siguiente (R2 0.09 rapidez, 0.05 giro).
 
 ### Pendiente / decisiones para el usuario
 - [ ] Compartir el reporte (Share) con quien corresponda antes del viernes.

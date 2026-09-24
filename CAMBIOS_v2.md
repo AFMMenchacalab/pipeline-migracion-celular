@@ -155,6 +155,32 @@ Etiquetas jerárquicas (12 → 12.1 / 12.2), árboles y video.
 - Reporte en HTML (`23_reporte_html.py` + `scripts/plantillas/reporte.html`)
   con videos, fotos, simulador interactivo de la EAD y glosario.
 
+## 4c. Formas celulares y búsqueda de relaciones nuevas
+
+- `27_morfoespacio.py`: mapa de formas con el índice q = perímetro/√área,
+  usando las máscaras ya guardadas (no se vuelve a segmentar). **Por qué q:**
+  es la variable con la que la literatura de atascamiento (Bi et al. 2015,
+  Park et al. 2015) define la transición sólido–fluido (q* = 3.81), así que
+  permite comparar con un valor publicado. Como estas células no forman una
+  monocapa, ese valor se usa como referencia, no como ley.
+- `29_arquetipos_forma.py`: agrupa contornos normalizados (centroide, área
+  1, eje mayor horizontal, orientación por momentos de tercer orden) con
+  PCA + mezcla de gaussianas (k por BIC). **Por qué nombrar por armónicos
+  de Fourier y no por ajuste de plantillas:** el BIC de las plantillas
+  (superelipse, gota, triángulo) elegía nombres que no coincidían con la
+  forma media al verla; las reglas sobre A1 (gota), A2 (alargamiento), A3
+  (triángulo) y A4–A8 (protuberancias) son explícitas y reproducibles. En
+  CAMAD se usan 5 familias porque 9 grupos superan la paleta de colores
+  distinguibles y hay menos células.
+- `28_descubrimiento.py` + `30_hallazgos.py`: cruza movimiento, forma,
+  núcleo (SiR-DNA), contenido de ADN y contacto. **Para no reportar
+  casualidades:** descubrimiento en películas impares y validación en
+  pares (mismo signo), control de FDR (Benjamini-Hochberg), película como
+  réplica (Wilcoxon), pares triviales excluidos, y modelo predictivo
+  evaluado en películas que no vio (GroupKFold). En H2 se excluyen células
+  redondeadas y cromatina muy condensada para no confundir G2 con mitosis.
+- Todos se agregan a `correr_v2.sh` (parte `reporte`).
+
 ## 5. Rendimiento
 
 - GPU: fp16 más lectura/escritura en hilos. La segmentación BF pasa de

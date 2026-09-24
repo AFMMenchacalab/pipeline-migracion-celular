@@ -63,6 +63,11 @@ if [[ "$PARTE" == "todo" || "$PARTE" == "reporte" ]]; then
   paso simulaciones  $PY scripts/19_simulaciones_metodos.py
   paso whad          $PY scripts/21_whad.py
   paso rendimiento   $PY scripts/24_rendimiento.py
+  # formas y búsqueda exploratoria (usan tracks de BF y CAMAD ya calculados)
+  paso morfoespacio  $PY scripts/27_morfoespacio.py
+  paso descubrimiento $PY scripts/28_descubrimiento.py
+  paso arquetipos    $PY scripts/29_arquetipos_forma.py
+  paso hallazgos     $PY scripts/30_hallazgos.py
   paso figuras_todas $PY scripts/18_figuras.py --bf "$(cat resultados/v2/variante_bf.txt)" --sirdna dist \
                         --camad "$(cat resultados/v2/variante_camad.txt)"
   paso reporte_html  $PY scripts/23_reporte_html.py
