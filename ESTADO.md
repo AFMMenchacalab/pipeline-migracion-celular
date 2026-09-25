@@ -4,6 +4,27 @@
 
 ---
 
+## 📌 SESIÓN 2026-09-24 (tarde) — dónde quedó todo
+
+- **Presentación corta** (18 diapositivas, con notas del orador):
+  https://claude.ai/artifact/S8wemVfKWumBNya7gArhEp — guion de ~10 min y
+  preguntas probables en `resultados/v2/presentacion_corta/guion_y_preguntas.md`.
+- **Reporte completo v4:** https://claude.ai/artifact/RHbrMPzxEw9b8xRXrHTiDS
+- **Pipeline, rama `experimental/interfaz-cuda`:** interfaz gráfica
+  (`./iniciar_interfaz.sh`, http://127.0.0.1:8770), recepción desde la Pi con
+  búsqueda en la red y código de 6 dígitos, segmentación en vivo, tracking y
+  estadística por experimento; instaladores `instalar.sh` / `instalar.bat`
+  (CUDA, ROCm o CPU). Guía: `INSTALAR.md`.
+- **Microscopio (`microscopeos-pi5`):** rama `feature/usb-envio-pc` (USB, envío
+  a la PC, respaldo en NAS en paralelo con preferencia a la PC) y rama
+  `feature/retencion-motor` (corriente de retención en los motores de enfoque).
+- **Falta probar en hardware real:** cámara de la Pi, memoria USB física, NAS
+  real, instalador en Windows y CUDA (RTX 3070 del laboratorio).
+- **Pendiente:** imágenes DPC propias para elegir la entrada de Cellpose y
+  validar; reconstrucción de fase cuantitativa; carpeta "Personal" de
+  Syncthing en pausa.
+- Transcripción completa de la sesión: `resultados/sesiones/` (fuera de git).
+
 ## 🆕 PIPELINE v2 (noche del 2026-09-23 al 24) — TERMINADO
 
 Detalle de cada cambio y su porqué: `CAMBIOS_v2.md`. Cómo correrlo: `README.md`
