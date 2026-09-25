@@ -77,8 +77,13 @@ def preparar(fotos, sufijos, modo, reducir=1):
     if modo == "suma" or not {"_L", "_R", "_T", "_B"} <= set(fotos):
         return suma, None
     eps = 1e-6
-    lr = (fotos["_L"] - fotos["_R"]) / (fotos["_L"] + fotos["_R"] + eps)
-    tb = (fotos["_T"] - fotos["_B"]) / (fotos["_T"] + fotos["_B"] + eps)
+    # Cada mitad de la matriz ilumina el campo distinto (viñeteado, ángulo):
+    # sin normalizar, (L-R)/(L+R) arrastra un gradiente de fondo del mismo
+    # orden que el relieve de los bordes (~1% con la matriz lejos).
+    from .fase_dpc import normalizar
+    n = {s: normalizar(fotos[s]) for s in ("_L", "_R", "_T", "_B")}
+    lr = (n["_L"] - n["_R"]) / (n["_L"] + n["_R"] + eps)
+    tb = (n["_T"] - n["_B"]) / (n["_T"] + n["_B"] + eps)
     if modo == "dpc":
         return np.sqrt(lr ** 2 + tb ** 2), None
     s = (suma - suma.mean()) / (suma.std() + eps)
