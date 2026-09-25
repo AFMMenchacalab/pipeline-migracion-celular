@@ -101,7 +101,7 @@ def sufijos_de(exp_dir):
     meta = Path(exp_dir) / "experimento.json"
     if meta.exists():
         try:
-            return json.loads(meta.read_text()).get("sufijos") or [""]
+            return json.loads(meta.read_text(encoding="utf-8")).get("sufijos") or [""]
         except (json.JSONDecodeError, OSError):
             pass
     return [""]
@@ -157,7 +157,7 @@ def segmentar_ciclo(model, exp, cam, fecha, fotos, sufijos, destino, entrada="su
     n_cel = int(masks.max())
     registro = destino.parent.parent / "segmentacion.csv"
     nuevo = not registro.exists()
-    with open(registro, "a", newline="") as f:
+    with open(registro, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if nuevo:
             w.writerow(["camara", "fecha", "celulas", "segundos", "entrada", "reducir"])

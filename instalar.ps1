@@ -8,6 +8,7 @@
 # descarga el modelo Cellpose-SAM (~1.2 GB) y verifica la instalación.
 param([ValidateSet("", "cuda", "cpu")][string]$Variante = "")
 $ErrorActionPreference = "Stop"
+$env:PYTHONUTF8 = "1"   # Python en UTF-8 (acentos) aunque la consola sea cp1252
 Set-Location -Path $PSScriptRoot
 
 $TORCH = "2.14.0"

@@ -168,7 +168,7 @@ def cargar_o_crear_codigo(ruta):
     recuerda y no hay que volver a emparejar."""
     ruta = Path(ruta)
     try:
-        c = json.loads(ruta.read_text()).get("codigo", "")
+        c = json.loads(ruta.read_text(encoding="utf-8")).get("codigo", "")
         if re.fullmatch(r"\d{6}", c):
             return c
     except (OSError, json.JSONDecodeError):
@@ -181,7 +181,7 @@ def cargar_o_crear_codigo(ruta):
 def guardar_codigo(ruta, codigo):
     ruta = Path(ruta)
     ruta.parent.mkdir(parents=True, exist_ok=True)
-    ruta.write_text(json.dumps({"codigo": codigo}))
+    ruta.write_text(json.dumps({"codigo": codigo}), encoding="utf-8")
 
 
 class Anunciador:

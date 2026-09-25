@@ -160,7 +160,7 @@ class Estado:
             return t
         r = self.analisis / exp / cam / "resumen.json"
         if r.exists():
-            return {"estado": "listo", "resumen": json.loads(r.read_text()), "t": r.stat().st_mtime}
+            return {"estado": "listo", "resumen": json.loads(r.read_text(encoding="utf-8")), "t": r.stat().st_mtime}
         return {"estado": "sin analizar"}
 
     # ---------- panorama ----------
@@ -183,7 +183,7 @@ class Estado:
             mj = self.entrada_dir / exp / "experimento.json"
             if mj.exists():
                 try:
-                    meta = json.loads(mj.read_text())
+                    meta = json.loads(mj.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     pass
             camaras = {}
@@ -252,7 +252,7 @@ def crear_manejador(est):
                 reg = est.masks / exp / "segmentacion.csv"
                 filas = []
                 if reg.exists():
-                    with open(reg) as f:
+                    with open(reg, encoding="utf-8") as f:
                         for r in csv.DictReader(f):
                             if r["camara"] == cam:
                                 filas.append({"fecha": r["fecha"], "celulas": int(r["celulas"]),
@@ -265,7 +265,7 @@ def crear_manejador(est):
                 a = dict(est.resumen_analisis(exp, cam))
                 pc = est.analisis / exp / cam / "por_celula.csv"
                 if a.get("estado") == "listo" and pc.exists():
-                    with open(pc) as f:
+                    with open(pc, encoding="utf-8") as f:
                         filas = list(csv.DictReader(f))
                     filas.sort(key=lambda r: -float(r["duracion_min"]))
                     a["celulas"] = filas[:100]

@@ -147,7 +147,7 @@ def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None):
             resumen["alfa_ensamble"] = float(np.polyfit(np.log(tau[ok][:n]), np.log(msd[ok][:n]), 1)[0])
         figura_msd(tau, msd, prw, destino / "msd.png")
     figura_trayectorias(tr, forma, filas[-1][0], entrada_dir, exp, cam, destino / "trayectorias.png")
-    (destino / "resumen.json").write_text(json.dumps(resumen, indent=2, ensure_ascii=False))
+    (destino / "resumen.json").write_text(json.dumps(resumen, indent=2, ensure_ascii=False), encoding="utf-8")
     aviso("listo")
     return resumen
 
