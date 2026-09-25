@@ -28,132 +28,16 @@ Uso:
   red local.
 """
 import argparse
-import hashlib
-import hmac
-import json
 import os
-import re
-import shutil
-import socket
 import sys
-import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.config import ROOT  # noqa: E402
+from lib.receptor import crear_manejador, ips_locales  # noqa: E402
 
 DESTINO_DEF = ROOT / "datasets" / "microscopio_propio"
-RE_EXP = re.compile(r"^[A-Za-z0-9_\-]{1,80}$")
-RE_CAM = re.compile(r"^(cam\d|_)$")
-RE_ARCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,119}$")
-MAX_BYTES = 256 * 1024 * 1024
-
-
-def sha256_archivo(ruta):
-    h = hashlib.sha256()
-    with open(ruta, "rb") as f:
-        for bloque in iter(lambda: f.read(1 << 20), b""):
-            h.update(bloque)
-    return h.hexdigest()
-
-
-def crear_manejador(destino, token):
-
-    class Manejador(BaseHTTPRequestHandler):
-        server_version = "ReceptorMicroscopio/1.0"
-
-        def log_message(self, fmt, *args):     # el log propio es más legible
-            pass
-
-        def _json(self, codigo, datos):
-            cuerpo = json.dumps(datos, ensure_ascii=False).encode()
-            self.send_response(codigo)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(cuerpo)))
-            self.end_headers()
-            self.wfile.write(cuerpo)
-
-        def _autorizado(self):
-            if not token:
-                return True
-            return hmac.compare_digest(self.headers.get("X-Token", ""), token)
-
-        def _ruta(self, partes):
-            """[experimento, camara, archivo] -> Path validado dentro de destino."""
-            if len(partes) != 3:
-                return None
-            exp, cam, arch = (unquote(p) for p in partes)
-            if not (RE_EXP.match(exp) and RE_CAM.match(cam) and RE_ARCH.match(arch)):
-                return None
-            carpeta = destino / exp if cam == "_" else destino / exp / cam
-            ruta = (carpeta / arch).resolve()
-            if destino.resolve() not in ruta.parents:
-                return None
-            return ruta
-
-        def do_GET(self):
-            if not self._autorizado():
-                return self._json(401, {"error": "clave incorrecta"})
-            url = urlparse(self.path)
-            partes = [p for p in url.path.split("/") if p]
-            if partes == ["salud"]:
-                libre = shutil.disk_usage(destino).free
-                return self._json(200, {"ok": True, "equipo": socket.gethostname(),
-                                        "destino": str(destino),
-                                        "libre_gb": round(libre / 1e9, 1)})
-            if partes and partes[0] == "existe":
-                ruta = self._ruta(partes[1:])
-                if ruta is None:
-                    return self._json(400, {"error": "ruta inválida"})
-                sha = parse_qs(url.query).get("sha256", [""])[0]
-                if ruta.is_file() and (not sha or sha256_archivo(ruta) == sha):
-                    return self._json(200, {"existe": True})
-                return self._json(404, {"existe": False})
-            return self._json(404, {"error": "no encontrado"})
-
-        def do_PUT(self):
-            if not self._autorizado():
-                return self._json(401, {"error": "clave incorrecta"})
-            partes = [p for p in urlparse(self.path).path.split("/") if p]
-            if not partes or partes[0] != "subir":
-                return self._json(404, {"error": "no encontrado"})
-            ruta = self._ruta(partes[1:])
-            if ruta is None:
-                return self._json(400, {"error": "ruta inválida"})
-            try:
-                n = int(self.headers.get("Content-Length", "-1"))
-            except ValueError:
-                n = -1
-            if n < 0 or n > MAX_BYTES:
-                return self._json(411 if n < 0 else 413, {"error": "tamaño inválido"})
-            sha_esperado = self.headers.get("X-Sha256", "")
-            ruta.parent.mkdir(parents=True, exist_ok=True)
-            tmp = ruta.with_name(f".{ruta.name}.parcial")
-            h = hashlib.sha256()
-            t0 = time.time()
-            with open(tmp, "wb") as f:
-                restante = n
-                while restante > 0:
-                    bloque = self.rfile.read(min(1 << 20, restante))
-                    if not bloque:
-                        break
-                    f.write(bloque)
-                    h.update(bloque)
-                    restante -= len(bloque)
-            if restante > 0 or (sha_esperado and h.hexdigest() != sha_esperado):
-                tmp.unlink(missing_ok=True)
-                print(f"[receptor] RECHAZADO {ruta.relative_to(destino)} (incompleto o hash distinto)",
-                      flush=True)
-                return self._json(422, {"error": "archivo incompleto o hash distinto"})
-            os.replace(tmp, ruta)
-            dt = time.time() - t0
-            print(f"[receptor] {time.strftime('%H:%M:%S')}  {ruta.relative_to(destino)}  "
-                  f"{n / 1e6:.1f} MB en {dt:.1f} s", flush=True)
-            return self._json(201, {"guardado": str(ruta.relative_to(destino))})
-
-    return Manejador
 
 
 def main():
@@ -169,10 +53,7 @@ def main():
         ap.error("falta --token (o --sin-token para pruebas)")
     args.destino.mkdir(parents=True, exist_ok=True)
     srv = ThreadingHTTPServer(("0.0.0.0", args.puerto), crear_manejador(args.destino, args.token))
-    try:
-        ip = socket.gethostbyname(socket.gethostname())
-    except OSError:
-        ip = "<IP de esta PC>"
+    ip = (ips_locales() or ["<IP de esta PC>"])[0]
     print(f"[receptor] escuchando en http://{ip}:{args.puerto}  ->  {args.destino}", flush=True)
     print("[receptor] Ctrl+C para detener", flush=True)
     try:

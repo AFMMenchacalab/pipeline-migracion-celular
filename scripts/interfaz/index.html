@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análisis de migración celular</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a0f1c'/%3E%3Cg fill='none' stroke='%2322c55e' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='8' cy='9' r='3'/%3E%3Ccircle cx='16' cy='15' r='3'/%3E%3Cpath d='M10.5 10.5l3 3'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
+  :root{
+    --font-ui:'Fira Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-mono:'Fira Code',ui-monospace,Consolas,monospace;
+    --bg:#0a0f1c; --panel:#141c2e; --panel2:#1b2336; --line:rgba(100,116,139,.35); --line-strong:#334155;
+    --text:#f1f5f9; --dim:#a3b3c7; --green:#22c55e; --green-soft:rgba(34,197,94,.16);
+    --amber:#f6b352; --amber-soft:rgba(246,179,82,.16); --red:#ef4444; --red-soft:rgba(239,68,68,.14);
+    --blue:#4dabf7; --serie:#4dabf7; --ring:rgba(34,197,94,.55);
+    --radius:14px; --radius-sm:9px;
+  }
+  :root[data-theme="light"]{
+    --bg:#eef2f6; --panel:#ffffff; --panel2:#e7ecf2; --line:rgba(71,85,105,.25); --line-strong:#cbd5e1;
+    --text:#0f172a; --dim:#516072; --green:#15803d; --green-soft:rgba(21,128,61,.12);
+    --amber:#b45309; --amber-soft:rgba(180,83,9,.12); --red:#b91c1c; --red-soft:rgba(185,28,28,.1);
+    --blue:#1d4ed8; --serie:#1d4ed8; --ring:rgba(21,128,61,.5);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#eef2f6; --panel:#ffffff; --panel2:#e7ecf2; --line:rgba(71,85,105,.25); --line-strong:#cbd5e1;
+      --text:#0f172a; --dim:#516072; --green:#15803d; --green-soft:rgba(21,128,61,.12);
+      --amber:#b45309; --amber-soft:rgba(180,83,9,.12); --red:#b91c1c; --red-soft:rgba(185,28,28,.1);
+      --blue:#1d4ed8; --serie:#1d4ed8; --ring:rgba(21,128,61,.5);
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:15px;line-height:1.45;min-height:100vh;padding:20px}
+  button,input,select{font:inherit;color:inherit}
+  .cab{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .cab h1{font-size:21px;font-weight:600;letter-spacing:.2px}
+  .cab h1 small{display:block;font-size:13px;color:var(--dim);font-weight:400}
+  .cab .der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .pastilla{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px}
+  .punto{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
+  .punto.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .punto.aviso{background:var(--amber)}
+  .punto.mal{background:var(--red)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .panel h2{font-size:12px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .flujo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px}
+  .paso .num{font-family:var(--font-mono);color:var(--green);font-size:12px}
+  .fila{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  label.campo{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim);flex:1;min-width:110px}
+  input[type=text],input[type=password],input[type=number],select{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;width:100%}
+  input:focus,select:focus,button:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
+  button{cursor:pointer;border:1px solid var(--line-strong);background:var(--panel2);border-radius:var(--radius-sm);padding:8px 14px;font-weight:500;transition:background .15s,border-color .15s}
+  button:hover:not(:disabled){border-color:var(--green)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.prim{background:var(--green);border-color:var(--green);color:#04130a;font-weight:600}
+  button.peligro{color:var(--red);border-color:var(--red)}
+  .datos{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-top:10px;font-size:13px}
+  .datos dt{color:var(--dim)}
+  .datos dd{font-family:var(--font-mono);font-size:12.5px;overflow-wrap:anywhere}
+  .ayuda{font-size:12.5px;color:var(--dim);margin-top:6px}
+  code{font-family:var(--font-mono);font-size:12.5px;background:var(--panel2);padding:1px 6px;border-radius:5px}
+  .principal{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px}
+  .lista{display:flex;flex-direction:column;gap:8px;max-height:70vh;overflow:auto}
+  .exp{border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;background:var(--panel2);cursor:pointer;text-align:left;width:100%}
+  .exp.sel{border-color:var(--green);background:var(--green-soft)}
+  .exp b{display:block;font-size:13.5px;font-family:var(--font-mono);font-weight:500}
+  .exp span{font-size:12px;color:var(--dim)}
+  .vacio{color:var(--dim);font-size:13.5px;padding:10px 2px}
+  .pestanas{display:flex;gap:6px;flex-wrap:wrap}
+  .pestanas button{padding:6px 12px;font-size:13px}
+  .pestanas button.act{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  .detalle-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .detalle-cab h3{font-family:var(--font-mono);font-size:15px;font-weight:500}
+  .rejilla{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px}
+  .visor{background:#0b1220;border:1px solid var(--line);border-radius:var(--radius-sm);min-height:320px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  .visor img{max-width:100%;max-height:62vh;display:block}
+  .visor .ph{color:#94a3b8;font-size:13.5px;padding:20px;text-align:center}
+  .visor .etq{position:absolute;left:10px;top:10px;font-family:var(--font-mono);font-size:12px;background:rgba(0,0,0,.6);color:#e2e8f0;padding:3px 8px;border-radius:6px}
+  .barra{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:6px}
+  .barra i{display:block;height:100%;background:var(--green);border-radius:99px;transition:width .4s}
+  .metricas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+  .met{background:var(--panel2);border-radius:var(--radius-sm);padding:10px}
+  .met b{display:block;font-family:var(--font-mono);font-size:18px;font-weight:500}
+  .met span{font-size:11.5px;color:var(--dim)}
+  .grafica{position:relative;margin-top:8px}
+  .grafica svg{width:100%;height:190px;display:block}
+  .tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line-strong);border-radius:8px;padding:5px 9px;font-size:12px;white-space:nowrap;transform:translate(-50%,-110%);display:none}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--font-mono)}
+  th{color:var(--dim);font-weight:500;font-family:var(--font-ui)}
+  th:first-child,td:first-child{text-align:left}
+  .tabla{max-height:260px;overflow:auto}
+  .registro{margin-top:14px}
+  .registro pre{font-family:var(--font-mono);font-size:12px;color:var(--dim);max-height:180px;overflow:auto;white-space:pre-wrap}
+  .aviso-err{color:var(--red);font-size:13px;margin-top:8px}
+  .oculto{display:none!important}
+  @media (max-width:1100px){.flujo{grid-template-columns:1fr}.principal{grid-template-columns:1fr}.rejilla{grid-template-columns:1fr}}
+  @media (max-width:600px){body{padding:12px}.metricas{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header class="cab">
+  <h1>Análisis de migración celular<small>Recepción, segmentación con Cellpose-SAM y tracking, en vivo</small></h1>
+  <div class="der">
+    <span class="pastilla" id="gpu" title="Dispositivo que usa Cellpose"><span class="punto"></span>—</span>
+    <button id="tema" title="Cambiar tema claro/oscuro">Tema</button>
+  </div>
+</header>
+
+<section class="flujo" aria-label="Etapas">
+  <div class="panel paso">
+    <h2><span class="num">1</span> Recepción desde la Raspberry</h2>
+    <div class="pastilla" id="recEstado"><span class="punto"></span>detenida</div>
+    <div class="fila">
+      <label class="campo">Clave (la misma que en la Pi)<input type="password" id="recToken" autocomplete="off"></label>
+      <label class="campo" style="max-width:110px">Puerto<input type="number" id="recPuerto" value="8765"></label>
+    </div>
+    <div class="fila"><button class="prim" id="recBtn">Iniciar recepción</button></div>
+    <p class="ayuda" id="recAyuda">En la Pi, panel «Envío a computadora»: <code>—</code></p>
+    <dl class="datos"><dt>Recibidas</dt><dd id="recN">0</dd><dt>Última</dt><dd id="recUlt">—</dd></dl>
+  </div>
+  <div class="panel paso">
+    <h2><span class="num">2</span> Segmentación en vivo</h2>
+    <div class="pastilla" id="segEstado"><span class="punto"></span>detenida</div>
+    <div class="fila">
+      <label class="campo">Imagen para Cellpose
+        <select id="segEntrada">
+          <option value="suma">Suma de las 4 fotos (≈ campo claro)</option>
+          <option value="dpc">Magnitud del DPC</option>
+          <option value="combinada">Combinada (3 canales)</option>
+        </select></label>
+      <label class="campo" style="max-width:120px">Reducir
+        <select id="segReducir"><option value="1">1× (0.22 µm/px)</option><option value="2" selected>2× (0.43 µm/px)</option><option value="3">3×</option><option value="4">4×</option></select></label>
+    </div>
+    <div class="fila"><button class="prim" id="segBtn">Iniciar segmentación</button></div>
+    <dl class="datos"><dt>En cola</dt><dd id="segCola">—</dd><dt>Segmentados</dt><dd id="segN">0</dd>
+      <dt>Promedio</dt><dd id="segProm">—</dd><dt>Última</dt><dd id="segUlt">—</dd></dl>
+    <p class="aviso-err oculto" id="segErr"></p>
+  </div>
+  <div class="panel paso">
+    <h2><span class="num">3</span> Carpeta de imágenes</h2>
+    <p class="ayuda">Lo que llega de la Pi se guarda aquí. Para analizar un experimento copiado de una memoria USB, elige su carpeta (la que contiene <code>timelapse_…</code>).</p>
+    <div class="fila"><label class="campo">Carpeta<input type="text" id="carpeta"></label></div>
+    <div class="fila"><button id="carpetaBtn">Usar esta carpeta</button></div>
+    <dl class="datos"><dt>Máscaras</dt><dd id="dirMasks">—</dd><dt>Resultados</dt><dd id="dirAnal">—</dd></dl>
+  </div>
+</section>
+
+<section class="principal">
+  <div class="panel">
+    <h2>Experimentos</h2>
+    <div class="lista" id="lista"><p class="vacio">Todavía no llegó ningún experimento.</p></div>
+  </div>
+  <div class="panel" id="detalle">
+    <p class="vacio" id="sinSel">Elige un experimento de la lista.</p>
+    <div id="conSel" class="oculto">
+      <div class="detalle-cab">
+        <h3 id="detNombre">—</h3>
+        <div class="pestanas" id="camaras"></div>
+      </div>
+      <div class="rejilla">
+        <div>
+          <div class="pestanas" id="vistas">
+            <button data-v="ultima" class="act">Segmentación en vivo</button>
+            <button data-v="trayectorias">Trayectorias</button>
+            <button data-v="msd">MSD</button>
+          </div>
+          <div class="visor" style="margin-top:8px"><span class="etq" id="visorEtq"></span><img id="visorImg" alt="" class="oculto"><p class="ph" id="visorPh">Todavía no hay imagen.</p></div>
+        </div>
+        <div>
+          <h2>Progreso</h2>
+          <div style="font-size:13px" id="progTxt">—</div>
+          <div class="barra"><i id="progBarra" style="width:0%"></i></div>
+          <h2 style="margin-top:16px">Células por ciclo</h2>
+          <div class="grafica" id="grafica"><svg id="svg" role="img" aria-label="Número de células segmentadas en cada ciclo"></svg><div class="tip" id="tip"></div></div>
+          <h2 style="margin-top:14px">Trayectorias y estadística</h2>
+          <div class="fila" style="margin-top:0"><button class="prim" id="analBtn">Analizar trayectorias</button><span class="ayuda" id="analEstado"></span></div>
+          <div class="metricas" id="metricas"></div>
+        </div>
+      </div>
+      <div class="tabla" id="tablaCel"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel registro">
+  <h2>Registro</h2>
+  <pre id="log">—</pre>
+</section>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=(x,d=2)=>x==null||!isFinite(x)?'—':Number(x).toFixed(d);
+async function api(ruta,datos){
+  const r=await fetch(ruta,datos?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(datos)}:{});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+// ---------- tema ----------
+function aplicarTema(t){if(t)document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;}
+try{aplicarTema(localStorage.getItem('tema'));}catch(e){}
+$('tema').onclick=()=>{
+  const oscuro=document.documentElement.dataset.theme?document.documentElement.dataset.theme==='dark':!matchMedia('(prefers-color-scheme: light)').matches;
+  const t=oscuro?'light':'dark';aplicarTema(t);try{localStorage.setItem('tema',t);}catch(e){}
+  dibujarSerie();
+};
+// ---------- estado general ----------
+let E=null, sel={exp:null,cam:null,vista:'ultima'}, ultimaMarca='', serie=[], carpetaEditada=false, hashUsado=false;
+function pastilla(el,clase,texto){el.innerHTML=`<span class="punto ${clase}"></span>${esc(texto)}`;}
+async function refrescar(){
+  try{E=await api('/api/estado');}catch(e){return;}
+  const d=E.dispositivo;
+  pastilla($('gpu'),d.gpu?'ok':'aviso',d.gpu?`${d.backend} · ${d.nombre}`:`${d.backend} (lento)`);
+  // recepción
+  const r=E.receptor;
+  pastilla($('recEstado'),r.activo?'ok':'',r.activo?`activa · puerto ${r.puerto}`:'detenida');
+  $('recBtn').textContent=r.activo?'Detener recepción':'Iniciar recepción';
+  $('recBtn').className=r.activo?'peligro':'prim';
+  const ip=(E.ips&&E.ips[0])||'<IP de esta PC>';
+  $('recAyuda').innerHTML=`En la Pi, panel «Envío a computadora»: <code>http://${esc(ip)}:${esc(r.puerto||$('recPuerto').value)}</code>`;
+  $('recN').textContent=`${r.recibidos} archivos · ${r.mb} MB`;
+  $('recUlt').textContent=r.ultimo||'—';
+  // segmentación
+  const s=E.segmentacion;
+  const est={detenido:['','detenida'],cargando:['aviso','cargando el modelo…'],activo:['ok','activa']}[s.estado]||['',s.estado];
+  pastilla($('segEstado'),est[0],est[1]);
+  $('segBtn').textContent=s.estado==='detenido'?'Iniciar segmentación':'Detener segmentación';
+  $('segBtn').className=s.estado==='detenido'?'prim':'peligro';
+  $('segCola').textContent=s.estado==='detenido'?'—':s.cola;
+  $('segN').textContent=s.hechos;
+  $('segProm').textContent=s.promedio_s?`${s.promedio_s} s por ciclo`:'—';
+  $('segUlt').textContent=s.ultimo?`${s.ultimo.exp}/${s.ultimo.cam} · ${s.ultimo.celulas} células`:'—';
+  $('segErr').classList.toggle('oculto',!s.error);$('segErr').textContent=s.error?('Error: '+s.error):'';
+  // carpetas
+  if(!carpetaEditada)$('carpeta').value=E.entrada_dir;
+  $('dirMasks').textContent=E.masks_dir;$('dirAnal').textContent=E.analisis_dir;
+  $('log').textContent=(E.log||[]).slice().reverse().join('\n')||'—';
+  dibujarLista();
+  if(!sel.exp&&!hashUsado){hashUsado=true;               // #exp=…&cam=…&vista=… abre ese experimento
+    const h=new URLSearchParams(location.hash.slice(1));
+    if(h.get('vista'))sel.vista=h.get('vista');
+    $('vistas').querySelectorAll('button').forEach(x=>x.classList.toggle('act',x.dataset.v===sel.vista));
+    if(h.get('exp'))elegir(h.get('exp'),h.get('cam'));}
+  if(sel.exp)actualizarDetalle();
+}
+function dibujarLista(){
+  const L=$('lista');
+  if(!E.experimentos.length){L.innerHTML='<p class="vacio">Todavía no llegó ningún experimento.</p>';return;}
+  L.innerHTML=E.experimentos.map(x=>{
+    const cams=Object.entries(x.camaras).map(([c,v])=>`${c}: ${v.segmentados}/${v.ciclos}`).join(' · ');
+    const nom=x.meta&&x.meta.nombre?` · ${esc(x.meta.nombre)}`:'';
+    return `<button class="exp ${x.nombre===sel.exp?'sel':''}" data-exp="${esc(x.nombre)}"><b>${esc(x.nombre)}</b><span>${esc(x.meta&&x.meta.modo||'')}${nom}<br>${esc(cams)}</span></button>`;
+  }).join('');
+  L.querySelectorAll('.exp').forEach(b=>b.onclick=()=>elegir(b.dataset.exp));
+}
+function elegir(exp,cam){
+  const x=E.experimentos.find(e=>e.nombre===exp);if(!x)return;
+  sel.exp=exp;sel.cam=cam||sel.cam;
+  history.replaceState(null,'','#exp='+encodeURIComponent(exp)+'&cam='+encodeURIComponent(cam||sel.cam||''));
+  if(!x.camaras[sel.cam])sel.cam=Object.keys(x.camaras)[0];
+  ultimaMarca='';serie=[];
+  $('sinSel').classList.add('oculto');$('conSel').classList.remove('oculto');
+  dibujarLista();actualizarDetalle(true);
+}
+function actualizarDetalle(forzar){
+  const x=E.experimentos.find(e=>e.nombre===sel.exp);if(!x)return;
+  $('detNombre').textContent=sel.exp+(x.meta&&x.meta.nombre?` — ${x.meta.nombre}`:'');
+  $('camaras').innerHTML=Object.keys(x.camaras).map(c=>`<button data-c="${esc(c)}" class="${c===sel.cam?'act':''}">${esc(c)}</button>`).join('');
+  $('camaras').querySelectorAll('button').forEach(b=>b.onclick=()=>elegir(sel.exp,b.dataset.c));
+  const c=x.camaras[sel.cam]||{};
+  const pct=c.ciclos?Math.min(100,100*c.segmentados/c.ciclos):0;
+  $('progTxt').textContent=`${c.segmentados||0} de ${c.ciclos||0} ciclos segmentados`+(c.incompletos?` · ${c.incompletos} esperando fotos`:'')+(x.meta&&x.meta.intervalo_s?` · una foto cada ${x.meta.intervalo_s} s`:'');
+  $('progBarra').style.width=pct+'%';
+  const marca=`${c.segmentados}|${sel.vista}|${c.analisis}`;
+  if(forzar||marca!==ultimaMarca){ultimaMarca=marca;cargarImagen();cargarSerie();cargarAnalisis();}
+}
+function cargarImagen(){
+  const img=$('visorImg'),ph=$('visorPh');
+  const etq={ultima:'última imagen segmentada',trayectorias:'trayectorias',msd:'MSD del ensamble'}[sel.vista];
+  $('visorEtq').textContent=etq;
+  const url=`/api/imagen?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}&tipo=${sel.vista}&t=${Date.now()}`;
+  const nuevo=new Image();
+  nuevo.onload=()=>{img.src=nuevo.src;img.alt=etq;img.classList.remove('oculto');ph.classList.add('oculto');};
+  nuevo.onerror=()=>{img.classList.add('oculto');ph.classList.remove('oculto');
+    ph.textContent=sel.vista==='ultima'?'Todavía no hay imagen segmentada.':'Todavía no se analizaron las trayectorias: usa «Analizar trayectorias».';};
+  nuevo.src=url;
+}
+$('vistas').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  sel.vista=b.dataset.v;$('vistas').querySelectorAll('button').forEach(x=>x.classList.toggle('act',x===b));cargarImagen();});
+// ---------- serie de células por ciclo (SVG) ----------
+async function cargarSerie(){
+  try{const j=await api(`/api/serie?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}`);serie=j.filas;}catch(e){serie=[];}
+  dibujarSerie();
+}
+function aFecha(f){return new Date(+f.slice(0,4),+f.slice(4,6)-1,+f.slice(6,8),+f.slice(9,11),+f.slice(11,13),+f.slice(13,15));}
+function dibujarSerie(){
+  const svg=$('svg'),W=svg.clientWidth||500,H=190,m={l:40,r:12,t:12,b:26};
+  if(!serie.length){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="currentColor" opacity=".6" font-size="13">sin datos todavía</text>`;return;}
+  const t0=aFecha(serie[0].fecha),xs=serie.map(s=>(aFecha(s.fecha)-t0)/3.6e6),ys=serie.map(s=>s.celulas);
+  const xmax=Math.max(xs[xs.length-1],1e-3);
+  const paso=(v=>{const p=10**Math.floor(Math.log10(v));return [1,2,5,10].map(k=>k*p).find(k=>v/k<=4)||10*p;})(Math.max(...ys,1)*1.05);
+  const ymax=Math.ceil(Math.max(...ys,1)*1.05/paso)*paso;
+  const X=x=>m.l+(W-m.l-m.r)*x/xmax,Y=y=>H-m.b-(H-m.t-m.b)*y/ymax;
+  const cs=getComputedStyle(document.documentElement),col=cs.getPropertyValue('--serie').trim(),lin=cs.getPropertyValue('--line').trim(),dim=cs.getPropertyValue('--dim').trim();
+  let g='';
+  for(let y=0;y<=ymax+1e-9;y+=paso){g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(y)}" y2="${Y(y)}" stroke="${lin}"/><text x="${m.l-6}" y="${Y(y)+4}" text-anchor="end" font-size="11" fill="${dim}">${Math.round(y)}</text>`;}
+  for(let i=0;i<=4;i++){const x=xmax*i/4;g+=`<text x="${X(x)}" y="${H-8}" text-anchor="middle" font-size="11" fill="${dim}">${x.toFixed(x<10?1:0)} h</text>`;}
+  const d=xs.map((x,i)=>`${i?'L':'M'}${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join('');
+  g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+  if(xs.length<=60)g+=xs.map((x,i)=>`<circle cx="${X(x)}" cy="${Y(ys[i])}" r="3" fill="${col}"/>`).join('');
+  g+=`<line id="cursor" y1="${m.t}" y2="${H-m.b}" stroke="${dim}" stroke-dasharray="3 3" opacity="0"/>`;
+  g+=`<rect x="${m.l}" y="${m.t}" width="${W-m.l-m.r}" height="${H-m.t-m.b}" fill="transparent" id="zona"/>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML=g;
+  const tip=$('tip'),cur=svg.querySelector('#cursor');
+  svg.querySelector('#zona').onmousemove=ev=>{
+    const r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)*W/r.width;
+    let k=0,best=1e9;xs.forEach((x,i)=>{const dd=Math.abs(X(x)-px);if(dd<best){best=dd;k=i;}});
+    cur.setAttribute('x1',X(xs[k]));cur.setAttribute('x2',X(xs[k]));cur.setAttribute('opacity','1');
+    const f=serie[k].fecha;tip.style.display='block';tip.style.left=(X(xs[k])*r.width/W)+'px';tip.style.top=(Y(ys[k])*r.height/H)+'px';
+    tip.textContent=`${f.slice(9,11)}:${f.slice(11,13)} · ${ys[k]} células · ${serie[k].segundos} s`;
+  };
+  svg.querySelector('#zona').onmouseleave=()=>{tip.style.display='none';cur.setAttribute('opacity','0');};
+}
+window.addEventListener('resize',dibujarSerie);
+// ---------- análisis ----------
+let sondeoAnal=null;
+async function cargarAnalisis(){
+  let a;try{a=await api(`/api/analisis?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}`);}catch(e){return;}
+  const btn=$('analBtn');
+  btn.disabled=a.estado==='corriendo';
+  $('analEstado').textContent={corriendo:`analizando: ${a.paso||''}…`,listo:'análisis listo',error:'error: '+(a.error||''),'sin analizar':'todavía sin analizar'}[a.estado]||'';
+  clearTimeout(sondeoAnal);
+  if(a.estado==='corriendo')sondeoAnal=setTimeout(cargarAnalisis,1500);
+  const r=a.resumen;
+  if(a.estado==='listo'&&r){
+    btn.textContent='Volver a analizar';
+    const prw=r.prw||{};
+    const mets=[[r.trayectorias_analizadas,'trayectorias analizadas',0],[r.rapidez_um_min,'rapidez (µm/min, mediana)',2],
+      [r.direccionalidad,'direccionalidad (mediana)',2],[r.alfa_mediana,'α por célula (mediana)',2],
+      [r.ead1_mediana,'EAD₁ corregida (mediana)',3],[prw.P,'persistencia P (min)',1]];
+    $('metricas').innerHTML=mets.map(([v,t,d])=>`<div class="met"><b>${fmt(v,d)}</b><span>${t}</span></div>`).join('');
+    const cel=a.celulas||[];
+    $('tablaCel').innerHTML=cel.length?`<h2 style="margin-top:14px">Células (las 100 trayectorias más largas)</h2><table><thead><tr><th>trayectoria</th><th>duración (min)</th><th>rapidez (µm/min)</th><th>direccionalidad</th><th>α</th><th>EAD₁</th><th>área (µm²)</th></tr></thead><tbody>`+
+      cel.map(c=>`<tr><td>${esc(c.track_id)}</td><td>${fmt(+c.duracion_min,0)}</td><td>${fmt(+c.rapidez_um_min)}</td><td>${fmt(+c.direccionalidad)}</td><td>${fmt(+c.alfa)}</td><td>${fmt(+c.ead1_corr,3)}</td><td>${fmt(+c.area_um2,0)}</td></tr>`).join('')+'</tbody></table>':'';
+  }else{
+    btn.textContent='Analizar trayectorias';
+    if(a.estado!=='corriendo'){$('metricas').innerHTML='';$('tablaCel').innerHTML='';}
+  }
+  if(a.estado==='listo'&&sel.vista!=='ultima')cargarImagen();
+}
+$('analBtn').onclick=async()=>{
+  try{await api('/api/analizar',{exp:sel.exp,cam:sel.cam});}catch(e){alert(e.message);return;}
+  cargarAnalisis();
+};
+// ---------- botones de las etapas ----------
+$('recBtn').onclick=async()=>{
+  const act=E&&E.receptor.activo;
+  try{await api('/api/receptor',act?{accion:'detener'}:{accion:'iniciar',token:$('recToken').value,puerto:+$('recPuerto').value});}
+  catch(e){alert(e.message);}
+  refrescar();
+};
+$('segBtn').onclick=async()=>{
+  const act=E&&E.segmentacion.estado!=='detenido';
+  try{await api('/api/segmentacion',act?{accion:'detener'}:{accion:'iniciar',entrada:$('segEntrada').value,reducir:+$('segReducir').value});}
+  catch(e){alert(e.message);}
+  refrescar();
+};
+$('carpeta').oninput=()=>{carpetaEditada=true;};
+$('carpetaBtn').onclick=async()=>{
+  try{await api('/api/carpeta',{ruta:$('carpeta').value});carpetaEditada=false;sel.exp=null;
+    $('conSel').classList.add('oculto');$('sinSel').classList.remove('oculto');}
+  catch(e){alert(e.message);}
+  refrescar();
+};
+refrescar();setInterval(refrescar,2000);
+setInterval(()=>{if(sel.exp)cargarSerie();},6000);
+</script>
+</body>
+</html>

@@ -25,9 +25,18 @@ Los datos no se versionan: se descargan en `datasets/`.
 
 ## Instalación
 
+**Rápida (recomendada), en cualquier PC:** `./instalar.sh` en Linux o
+`instalar.bat` en Windows. Detecta la GPU (NVIDIA → CUDA, AMD → ROCm, o CPU),
+instala todo y lo verifica. Guía completa en [INSTALAR.md](INSTALAR.md).
+
+**Interfaz gráfica** (recepción desde la Raspberry, segmentación en vivo y
+tracking, con vista previa): `./iniciar_interfaz.sh` o `iniciar_interfaz.bat`.
+
+Manual, reproduciendo exactamente el entorno de la PC de desarrollo (ROCm):
+
 ```bash
 python -m venv venv
-venv/bin/pip install -r requirements.txt   # PyTorch para ROCm; cambiar el índice si la GPU es NVIDIA
+venv/bin/pip install -r requirements.txt
 ```
 
 El `venv` no se comparte entre PCs: las rutas quedan escritas dentro. Hay que
