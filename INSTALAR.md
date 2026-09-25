@@ -46,7 +46,8 @@ y prueba el tracking. Si dice **TODO BIEN**, está listo.
 
 ## Uso de la interfaz
 
-Se abre sola en el navegador (`http://127.0.0.1:8080`).
+Se abre sola en el navegador (`http://127.0.0.1:8770`). Si ese puerto también
+está ocupado: `iniciar_interfaz.sh --puerto 8771` (o el número que se quiera).
 
 1. **Recepción desde la Raspberry.** *Iniciar recepción*. La interfaz
    muestra un **código de 6 dígitos**. En la Pi (panel *Envío a

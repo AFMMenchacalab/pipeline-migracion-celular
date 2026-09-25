@@ -14,7 +14,7 @@ puede mirar desde otra computadora de la red con --publico, y usa la misma
 biblioteca estándar de Python que el receptor.
 
 Uso:
-  venv/bin/python scripts/33_interfaz.py            # abre http://127.0.0.1:8080
+  venv/bin/python scripts/33_interfaz.py            # abre http://127.0.0.1:8770
   venv/bin/python scripts/33_interfaz.py --publico  # visible en la red local
 """
 import argparse
@@ -339,7 +339,9 @@ def crear_manejador(est):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--puerto", type=int, default=8080, help="Puerto de la interfaz")
+    # 8770 y no 8080: el 8080 lo usan muchos programas (p. ej. el servidor de
+    # libros de Calibre). Queda junto al receptor (8765/tcp, 8766/udp).
+    ap.add_argument("--puerto", type=int, default=8770, help="Puerto de la interfaz")
     ap.add_argument("--entrada-dir", type=Path, default=ROOT / "datasets" / "microscopio_propio")
     ap.add_argument("--salida-dir", type=Path, default=None,
                     help="Carpeta para máscaras y resultados (por defecto ~/microscopio_cache)")
