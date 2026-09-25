@@ -22,7 +22,8 @@ import numpy as np
 
 UM_POR_PX = 0.2159          # calibración del 20x con la cámara IMX219 (2026-09-10)
 RE_IMG = re.compile(r"^img_(\d{8}_\d{6})(_[LRTB])?\.tif$")
-ENTRADAS = ("suma", "dpc", "combinada")
+ENTRADAS = ("suma", "dpc", "combinada", "fase")
+_FASE = None                # ReconstructorEnVivo, se crea al primer uso
 
 
 def dispositivo():
@@ -62,8 +63,16 @@ def leer(ruta, reducir):
     return img
 
 
-def preparar(fotos, sufijos, modo):
+def preparar(fotos, sufijos, modo, reducir=1):
     """fotos: {sufijo: imagen}. Devuelve (imagen para Cellpose, eje de canal)."""
+    global _FASE
+    if modo == "fase":
+        if not {"_L", "_R", "_T", "_B"} <= set(fotos):
+            raise ValueError("la entrada 'fase' necesita las 4 fotos DPC (L, R, T, B)")
+        if _FASE is None:
+            from .fase_dpc import ReconstructorEnVivo
+            _FASE = ReconstructorEnVivo()
+        return _FASE(fotos, reducir), None
     suma = np.mean([fotos[s] for s in sufijos], axis=0)
     if modo == "suma" or not {"_L", "_R", "_T", "_B"} <= set(fotos):
         return suma, None
@@ -141,7 +150,7 @@ def segmentar_ciclo(model, exp, cam, fecha, fotos, sufijos, destino, entrada="su
     Devuelve (número de células, segundos)."""
     t0 = time.time()
     imgs = {s: leer(fotos[s], reducir) for s in sufijos}
-    img, eje_canal = preparar(imgs, sufijos, entrada)
+    img, eje_canal = preparar(imgs, sufijos, entrada, reducir)
     masks, flows, _ = model.eval(img, batch_size=16, channel_axis=eje_canal,
                                  flow_threshold=flow_threshold,
                                  cellprob_threshold=cellprob_threshold)

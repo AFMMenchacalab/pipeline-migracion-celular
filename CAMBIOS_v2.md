@@ -220,6 +220,27 @@ Etiquetas jerárquicas (12 → 12.1 / 12.2), árboles y video.
 - `verificar_instalacion.py`: segmenta una imagen sintética con 12 células
   y prueba el tracking; el instalador lo corre al final.
 
+## 4f. Fase cuantitativa desde las 4 fotos DPC (rama experimental/interfaz-cuda)
+
+- `lib/fase_dpc.py` + `34_fase_dpc.py`: método de Tian y Waller (2015):
+  funciones de transferencia de objeto débil con la geometría real (matriz
+  Waveshare ESP32-S3-Matrix 8×8, paso 2.70 mm medido sobre el dibujo del
+  fabricante; objetivo 20×/0.40 160/0.17; 0.2159 µm/px; verde 0.525 µm) y
+  deconvolución de Tikhonov de los dos ejes. La orientación de la matriz
+  respecto de la cámara se calibra sola (espejo x/y) eligiendo la que da
+  células como montañas positivas.
+- **Hallazgo de la simulación (condiciona el montaje):** con iluminación
+  coherente, un LED solo transmite la fase de estructuras del tamaño de una
+  célula si su ángulo está cerca del límite del objetivo (NA ≈ 0.40). Con la
+  matriz a 35 mm la reconstrucción no funciona (correlación 0.1); a ~23 mm
+  sí (0.67). **Con un difusor** sobre la matriz funciona en 20–26 mm
+  (correlación 0.92–0.94). La fase de estructuras grandes sale ~25%
+  subestimada (frecuencias bajas perdidas): útil para segmentar y comparar
+  con el mismo montaje, no como masa seca absoluta sin calibrar.
+- La segmentación en vivo y la interfaz aceptan la entrada `fase` una vez
+  calibrado el montaje. Prueba con 12 células sintéticas: orientación
+  detectada correctamente y 12/12 células segmentadas.
+
 ## 5. Rendimiento
 
 - GPU: fp16 más lectura/escritura en hilos. La segmentación BF pasa de
