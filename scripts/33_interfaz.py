@@ -34,7 +34,8 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.config import ROOT, cache_dir  # noqa: E402
 from lib import en_vivo as EV  # noqa: E402
-from lib.receptor import Receptor, ips_locales  # noqa: E402
+from lib.receptor import (Receptor, cargar_o_crear_codigo, codigo_nuevo,  # noqa: E402
+                          guardar_codigo, ips_locales)
 
 ESTATICOS = Path(__file__).resolve().parent / "interfaz"
 RE_NOMBRE = re.compile(r"^[A-Za-z0-9_\-]{1,80}$")
@@ -57,7 +58,10 @@ class Estado:
             self.masks = cache_dir("masks", "propio")
             self.analisis = cache_dir("analisis", "propio")
         self.receptor = Receptor()
-        self.token = ""
+        # código de emparejamiento: se genera una vez y se guarda, así la Pi
+        # no tiene que volver a escribirlo cada vez que se reinicia la PC
+        self.ruta_codigo = cache_dir() / "receptor.json"
+        self.token = cargar_o_crear_codigo(self.ruta_codigo)
         self.log = deque(maxlen=300)
         self.lock = threading.Lock()
         self.seg = {"estado": "detenido", "entrada": "suma", "reducir": 2,
@@ -196,7 +200,7 @@ class Estado:
         return {"dispositivo": self.disp, "ips": ips_locales(),
                 "entrada_dir": str(self.entrada_dir), "masks_dir": str(self.masks),
                 "analisis_dir": str(self.analisis),
-                "receptor": self.receptor.estado(), "token_configurado": bool(self.token),
+                "receptor": self.receptor.estado(), "codigo": self.token,
                 "segmentacion": seg, "experimentos": self.experimentos(),
                 "log": list(self.log)[-80:]}
 
@@ -276,16 +280,23 @@ def crear_manejador(est):
                 return self._enviar(400, {"error": "JSON inválido"})
             ruta = urlparse(self.path).path
             if ruta == "/api/receptor":
+                if datos.get("accion") == "nuevo_codigo":
+                    if est.receptor.activo():
+                        return self._enviar(400, {"error": "Detén la recepción antes de cambiar el código"})
+                    est.token = codigo_nuevo()
+                    guardar_codigo(est.ruta_codigo, est.token)
+                    est.anotar("código de emparejamiento nuevo: hay que escribirlo otra vez en la Pi")
+                    return self._enviar(200, {"codigo": est.token})
                 if datos.get("accion") == "iniciar":
-                    token = (datos.get("token") or est.token or "").strip()
-                    if not token:
-                        return self._enviar(400, {"error": "Escribe una clave (la misma que en la Pi)"})
-                    est.token = token
                     try:
-                        est.receptor.iniciar(est.entrada_dir, token, int(datos.get("puerto") or 8765))
+                        est.receptor.iniciar(est.entrada_dir, est.token, int(datos.get("puerto") or 8765),
+                                             info_extra={"gpu": est.disp.get("nombre", "")})
                     except OSError as e:
                         return self._enviar(400, {"error": f"no se pudo abrir el puerto: {e}"})
-                    est.anotar(f"recepción activa en el puerto {est.receptor.puerto}")
+                    est.anotar(f"recepción activa en el puerto {est.receptor.puerto}; "
+                               f"código para la Pi: {est.token}")
+                    if est.receptor.aviso_descubrimiento:
+                        est.anotar(est.receptor.aviso_descubrimiento)
                 else:
                     est.receptor.detener()
                     est.anotar("recepción detenida")

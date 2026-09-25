@@ -48,9 +48,14 @@ y prueba el tracking. Si dice **TODO BIEN**, está listo.
 
 Se abre sola en el navegador (`http://127.0.0.1:8080`).
 
-1. **Recepción desde la Raspberry.** Escribir una clave y *Iniciar
-   recepción*. La interfaz muestra la dirección que hay que poner en la Pi
-   (panel *Envío a computadora* de MicroscopeOS, rama `feature/usb-envio-pc`).
+1. **Recepción desde la Raspberry.** *Iniciar recepción*. La interfaz
+   muestra un **código de 6 dígitos**. En la Pi (panel *Envío a
+   computadora* de MicroscopeOS, rama `feature/usb-envio-pc`): **Buscar
+   computadoras en la red**, elegir esta PC de la lista, escribir el código y
+   *Probar conexión*. Se hace una sola vez: el código queda guardado en las
+   dos, y si la PC cambia de IP la Pi la vuelve a encontrar sola por su
+   nombre. Si la búsqueda no la encuentra (redes distintas o Wi-Fi que aísla
+   equipos), la interfaz muestra la dirección para escribirla a mano.
 2. **Segmentación en vivo.** Elegir la imagen para Cellpose y *Iniciar
    segmentación*. Cada ciclo que llega se segmenta en unos segundos; la
    última imagen con los contornos se ve en *Segmentación en vivo*.
@@ -64,9 +69,11 @@ Se abre sola en el navegador (`http://127.0.0.1:8080`).
 Opciones: `iniciar_interfaz.sh --publico` la deja visible desde otras
 computadoras de la red (por defecto solo desde la misma PC).
 
-**Cortafuegos:** para recibir de la Pi hay que permitir el puerto
-**8765/tcp** en la red local (en Windows, aceptar el aviso de Windows
-Defender la primera vez).
+**Cortafuegos:** para recibir de la Pi hay que permitir en la red local el
+puerto **8765/tcp** (imágenes) y el **8766/udp** (búsqueda automática). En
+Windows basta con aceptar el aviso de Windows Defender la primera vez
+(marcar *Redes privadas*). En Linux con firewalld:
+`sudo firewall-cmd --add-port=8765/tcp --add-port=8766/udp --permanent && sudo firewall-cmd --reload`.
 
 ## Dónde queda todo
 

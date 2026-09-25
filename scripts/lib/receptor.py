@@ -3,12 +3,31 @@ Receptor HTTP de las imágenes que manda la Raspberry Pi (MicroscopeOS,
 core/envio.py). Lo usan 31_receptor_microscopio.py (consola) y
 33_interfaz.py (interfaz gráfica). Ver el encabezado de
 31_receptor_microscopio.py para el protocolo y las decisiones de diseño.
+
+DESCUBRIMIENTO EN LA RED LOCAL
+==============================
+
+Para que en la Pi no haya que escribir la IP de la PC: mientras la
+recepción está activa, la PC escucha en UDP 8766. La Pi manda por
+difusión (broadcast) "MICROSCOPIO_BUSCAR" y cada PC con la recepción
+activa responde con su nombre, puerto y GPU. La Pi arma la lista y el
+usuario elige. Es el mismo mecanismo que usan impresoras y otros equipos
+para "descubrirse"; no requiere instalar nada (biblioteca estándar).
+
+La respuesta NO incluye la clave: la clave es un código de 6 dígitos que
+la PC muestra en pantalla y que se escribe en la Pi (emparejamiento). Así,
+otro equipo de la red puede ver que la PC existe, pero no mandarle
+archivos.
+
+Límite: el broadcast no cruza routers. Si la Pi y la PC están en redes
+distintas (o la red Wi-Fi aísla a los clientes), se escribe la IP a mano.
 """
 import hashlib
 import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import threading
@@ -135,10 +154,81 @@ def crear_manejador(destino, token, al_recibir=None):
 
 
 
+PUERTO_DESCUBRIMIENTO = 8766
+MENSAJE_BUSCAR = b"MICROSCOPIO_BUSCAR"
+
+
+def codigo_nuevo():
+    """Código de emparejamiento de 6 dígitos (fácil de escribir en la Pi)."""
+    return f"{secrets.randbelow(10 ** 6):06d}"
+
+
+def cargar_o_crear_codigo(ruta):
+    """El código se guarda para que no cambie al reiniciar la PC: la Pi lo
+    recuerda y no hay que volver a emparejar."""
+    ruta = Path(ruta)
+    try:
+        c = json.loads(ruta.read_text()).get("codigo", "")
+        if re.fullmatch(r"\d{6}", c):
+            return c
+    except (OSError, json.JSONDecodeError):
+        pass
+    c = codigo_nuevo()
+    guardar_codigo(ruta, c)
+    return c
+
+
+def guardar_codigo(ruta, codigo):
+    ruta = Path(ruta)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(json.dumps({"codigo": codigo}))
+
+
+class Anunciador:
+    """Responde a las búsquedas de la Pi mientras la recepción está activa."""
+
+    def __init__(self, info):
+        self.info = info            # dict que se manda como respuesta (sin la clave)
+        self.sock = None
+        self.hilo = None
+
+    def iniciar(self):
+        if self.sock is not None:
+            return
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("0.0.0.0", PUERTO_DESCUBRIMIENTO))
+        s.settimeout(0.5)
+        self.sock = s
+        self.hilo = threading.Thread(target=self._bucle, daemon=True)
+        self.hilo.start()
+
+    def _bucle(self):
+        while self.sock is not None:
+            try:
+                datos, origen = self.sock.recvfrom(512)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if datos.startswith(MENSAJE_BUSCAR):
+                try:
+                    self.sock.sendto(json.dumps(self.info).encode(), origen)
+                except OSError:
+                    pass
+
+    def detener(self):
+        s, self.sock = self.sock, None
+        if s is not None:
+            s.close()
+
+
 class Receptor:
     """Receptor en un hilo, para arrancarlo y detenerlo desde la interfaz."""
 
     def __init__(self):
+        self.anunciador = None
+        self.aviso_descubrimiento = None
         self.srv = None
         self.hilo = None
         self.puerto = None
@@ -154,7 +244,7 @@ class Receptor:
         self.ultimo = str(rel)
         self.ultimo_t = time.time()
 
-    def iniciar(self, destino, token, puerto=8765):
+    def iniciar(self, destino, token, puerto=8765, info_extra=None):
         if self.activo():
             return
         destino = Path(destino)
@@ -164,8 +254,20 @@ class Receptor:
         self.puerto, self.destino = int(puerto), destino
         self.hilo = threading.Thread(target=self.srv.serve_forever, daemon=True)
         self.hilo.start()
+        self.aviso_descubrimiento = None
+        try:
+            self.anunciador = Anunciador({"servicio": "receptor-microscopio", "version": 1,
+                                          "nombre": socket.gethostname(), "puerto": self.puerto,
+                                          **(info_extra or {})})
+            self.anunciador.iniciar()
+        except OSError as e:          # p. ej. otro receptor ya usa el 8766: se puede seguir con IP a mano
+            self.anunciador = None
+            self.aviso_descubrimiento = f"descubrimiento no disponible ({e}); usar la IP a mano"
 
     def detener(self):
+        if self.anunciador is not None:
+            self.anunciador.detener()
+            self.anunciador = None
         if self.srv is not None:
             self.srv.shutdown()
             self.srv.server_close()
@@ -176,6 +278,8 @@ class Receptor:
 
     def estado(self):
         return {"activo": self.activo(), "puerto": self.puerto,
+                "descubrible": self.anunciador is not None,
+                "aviso_descubrimiento": self.aviso_descubrimiento,
                 "destino": str(self.destino) if self.destino else None,
                 "recibidos": self.recibidos, "mb": round(self.bytes / 1e6, 1),
                 "ultimo": self.ultimo, "ultimo_t": self.ultimo_t}

@@ -22,20 +22,21 @@ Rutas:
   PUT /subir/<experimento>/<camara>/<archivo>  (X-Sha256, X-Token)
 
 Uso:
-  ../venv/bin/python scripts/31_receptor_microscopio.py --token MI_CLAVE
-  (en la Pi, panel "Envío a computadora": http://<IP de esta PC>:8765 y la
-  misma clave). Si la PC tiene cortafuegos, abrir el puerto 8765/tcp en la
-  red local.
+  ../venv/bin/python scripts/31_receptor_microscopio.py
+  (muestra un código de 6 dígitos; en la Pi: «Buscar en la red», elegir esta
+  PC y escribir el código)
+  Si la PC tiene cortafuegos, abrir en la red local el puerto 8765/tcp
+  (imágenes) y el 8766/udp (búsqueda automática desde la Pi).
 """
 import argparse
 import os
 import sys
-from http.server import ThreadingHTTPServer
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.config import ROOT  # noqa: E402
-from lib.receptor import crear_manejador, ips_locales  # noqa: E402
+from lib.config import ROOT, cache_dir  # noqa: E402
+from lib.receptor import Receptor, cargar_o_crear_codigo, ips_locales  # noqa: E402
 
 DESTINO_DEF = ROOT / "datasets" / "microscopio_propio"
 
@@ -45,20 +46,28 @@ def main():
     ap.add_argument("--puerto", type=int, default=8765)
     ap.add_argument("--destino", type=Path, default=DESTINO_DEF)
     ap.add_argument("--token", default=os.environ.get("MICROSCOPIO_TOKEN", ""),
-                    help="Clave compartida con la Pi (o variable MICROSCOPIO_TOKEN)")
+                    help="Clave propia en vez del código de 6 dígitos guardado (o variable MICROSCOPIO_TOKEN)")
     ap.add_argument("--sin-token", action="store_true",
                     help="Aceptar envíos sin clave (solo para pruebas)")
     args = ap.parse_args()
-    if not args.token and not args.sin_token:
-        ap.error("falta --token (o --sin-token para pruebas)")
-    args.destino.mkdir(parents=True, exist_ok=True)
-    srv = ThreadingHTTPServer(("0.0.0.0", args.puerto), crear_manejador(args.destino, args.token))
-    ip = (ips_locales() or ["<IP de esta PC>"])[0]
-    print(f"[receptor] escuchando en http://{ip}:{args.puerto}  ->  {args.destino}", flush=True)
+    token = "" if args.sin_token else (args.token or cargar_o_crear_codigo(cache_dir() / "receptor.json"))
+    rec = Receptor()
+    rec.iniciar(args.destino, token, args.puerto)
+    ips = " o ".join(f"http://{ip}:{args.puerto}" for ip in ips_locales()) or "<IP de esta PC>"
+    print(f"[receptor] recibiendo en el puerto {args.puerto}  ->  {args.destino}", flush=True)
+    if token:
+        print(f"[receptor] CÓDIGO PARA LA PI: {token}", flush=True)
+    if rec.anunciador is not None:
+        print("[receptor] en la Pi: «Buscar en la red», elegir esta PC y escribir el código", flush=True)
+    else:
+        print(f"[receptor] {rec.aviso_descubrimiento}", flush=True)
+    print(f"[receptor] dirección manual: {ips}", flush=True)
     print("[receptor] Ctrl+C para detener", flush=True)
     try:
-        srv.serve_forever()
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
+        rec.detener()
         print("\n[receptor] detenido", flush=True)
 
 
