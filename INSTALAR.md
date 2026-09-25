@@ -9,8 +9,8 @@ versión correcta de PyTorch.
 
 - **Python 3.10 o más nuevo.** En Windows, desde [python.org](https://www.python.org),
   marcando *Add python.exe to PATH*.
-- **Git** y acceso a GitHub (el repositorio es de la organización). La
-  forma más simple es `gh auth login` con la cuenta que tiene acceso.
+- **Git** (opcional). El repositorio es público: no hace falta cuenta de
+  GitHub. Sin Git, se puede descargar el ZIP (ver abajo).
 - **NVIDIA:** el driver instalado (`nvidia-smi` tiene que responder). No
   hace falta instalar el CUDA Toolkit: PyTorch trae lo que necesita.
   El instalador usa CUDA 13.0 si el driver lo soporta (≥ 580) y, si no,
@@ -36,6 +36,10 @@ git clone https://github.com/AFMMenchacalab/pipeline-migracion-celular.git
 cd pipeline-migracion-celular
 git switch experimental/interfaz-cuda
 ```
+
+**Sin Git:** descargar
+[el ZIP de la rama](https://github.com/AFMMenchacalab/pipeline-migracion-celular/archive/refs/heads/experimental/interfaz-cuda.zip)
+y descomprimirlo (evitar carpetas con rutas muy largas, p. ej. usar `C:\migracion`).
 
 Después, doble clic en **`instalar.bat`** y, cuando termine, en
 **`iniciar_interfaz.bat`**.
