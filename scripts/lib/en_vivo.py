@@ -21,7 +21,14 @@ from pathlib import Path
 import numpy as np
 
 UM_POR_PX = 0.2159          # calibración del 20x con la cámara IMX219 (2026-09-10)
-RE_IMG = re.compile(r"^img_(\d{8}_\d{6})(_[LRTB])?\.tif$")
+# Dos formas de nombre: img_20260831_121729_L.tif (hasta septiembre) y
+# 0001_2026-10-02_10-30-00_L.tif (MicroscopeOS desde el 2026-10-02: número
+# de ciclo, fecha y hora). Además de las crudas _L/_R/_T/_B pueden llegar
+# los archivos que deja core/dpc.py de la Pi cuando borra las crudas.
+SUFIJOS_PI = ("_dpcLR", "_dpcTB", "_suma", "_fase")
+RE_IMG = re.compile(r"^(?:img_(\d{8}_\d{6})|(\d{4}_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}))"
+                    r"(_[LRTB]|_dpcLR|_dpcTB|_suma|_fase)?\.tif$")
+ETIQUETA_PI = 65000         # TIFF tag con el JSON de metadatos de MicroscopeOS
 ENTRADAS = ("suma", "dpc", "combinada", "fase")
 _FASE = None                # ReconstructorEnVivo, se crea al primer uso
 
@@ -52,20 +59,47 @@ def cargar_modelo(fp16=True):
 
 
 def leer(ruta, reducir):
+    """Imagen en float32, reducida `reducir` veces respecto de la resolución
+    completa de la cámara.
+
+    Los TIFF que calcula la Pi (core/dpc.py) vienen en uint16 con el cero en
+    32768: se devuelven en su valor físico (DPC de -1 a 1, fase en rad)
+    según el "cero" y la "escala" de sus metadatos. La suma llega ya
+    reducida (por defecto a la mitad): se lleva al mismo tamaño que el DPC.
+    """
     import cv2
     import tifffile
-    img = tifffile.imread(ruta).astype(np.float32)
+    with tifffile.TiffFile(ruta) as t:
+        img = t.pages[0].asarray().astype(np.float32)
+        tag = t.pages[0].tags.get(ETIQUETA_PI)
+        texto = tag.value if tag is not None else None
+    try:
+        meta = json.loads(texto) if texto else {}
+    except (TypeError, ValueError):
+        meta = {}
     if img.ndim == 3:                       # por si llega en color: a gris
         img = img.mean(axis=-1)
-    if reducir > 1:
-        h, w = img.shape
-        img = cv2.resize(img, (w // reducir, h // reducir), interpolation=cv2.INTER_AREA)
+    for clave, escala_vieja in (("dpc", 1 / 32767), ("fase", 1e-4)):
+        if isinstance(meta.get(clave), dict):
+            v = meta[clave]                 # sin "escala": primer formato, 1/32767
+            img = (img - v.get("cero", 32768)) * v.get("escala", escala_vieja)
+    guardada = float((meta.get("suma") or {}).get("reduccion", 1) or 1)
+    h, w = img.shape
+    alto, ancho = round(h * guardada) // reducir, round(w * guardada) // reducir
+    if (alto, ancho) != (h, w):
+        interp = cv2.INTER_AREA if ancho < w else cv2.INTER_LINEAR
+        img = cv2.resize(img, (ancho, alto), interpolation=interp)
     return img
 
 
 def preparar(fotos, sufijos, modo, reducir=1):
-    """fotos: {sufijo: imagen}. Devuelve (imagen para Cellpose, eje de canal)."""
+    """fotos: {sufijo: imagen}. Devuelve (imagen para Cellpose, eje de canal).
+
+    Sirve igual con las 4 crudas que con lo que deja la Pi cuando las borra
+    (_dpcLR, _dpcTB, _suma): mismas entradas, mismo resultado."""
     global _FASE
+    if {"_dpcLR", "_dpcTB"} <= set(fotos):
+        return _preparar_pi(fotos, modo, reducir)
     if modo == "fase":
         if not {"_L", "_R", "_T", "_B"} <= set(fotos):
             raise ValueError("la entrada 'fase' necesita las 4 fotos DPC (L, R, T, B)")
@@ -86,8 +120,33 @@ def preparar(fotos, sufijos, modo, reducir=1):
     tb = (n["_T"] - n["_B"]) / (n["_T"] + n["_B"] + eps)
     if modo == "dpc":
         return np.sqrt(lr ** 2 + tb ** 2), None
+    return _combinar(suma, lr, tb), 2
+
+
+def _combinar(suma, lr, tb, eps=1e-6):
     s = (suma - suma.mean()) / (suma.std() + eps)
-    return np.stack([s, lr / (lr.std() + eps), tb / (tb.std() + eps)], axis=-1), 2
+    return np.stack([s, lr / (lr.std() + eps), tb / (tb.std() + eps)], axis=-1)
+
+
+def _preparar_pi(fotos, modo, reducir):
+    """Lo mismo que preparar() con los DPC que calculó la Pi. La Pi ya
+    normalizó cada foto por su fondo antes de restar (core/dpc.py, sigma
+    150 px): lr y tb llegan listos."""
+    global _FASE
+    lr, tb = fotos["_dpcLR"], fotos["_dpcTB"]
+    if modo == "fase":
+        if _FASE is None:
+            from .fase_dpc import ReconstructorEnVivo
+            _FASE = ReconstructorEnVivo()
+        return _FASE(fotos, reducir), None
+    if modo == "dpc":
+        return np.sqrt(lr ** 2 + tb ** 2), None
+    if "_suma" not in fotos:
+        raise ValueError(f"la entrada '{modo}' necesita el campo claro (_suma.tif) y este "
+                         "experimento no lo guardó: usar 'dpc' o 'fase'")
+    if modo == "suma":
+        return fotos["_suma"], None
+    return _combinar(fotos["_suma"], lr, tb), 2
 
 
 def a_8bits(img):
@@ -111,14 +170,34 @@ def superposicion(img, masks, ruta, lado_max=1024):
     tmp.replace(ruta)                       # que la interfaz nunca lea un PNG a medias
 
 
+def _experimento(exp_dir):
+    try:
+        return json.loads((Path(exp_dir) / "experimento.json").read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def sufijos_de(exp_dir):
-    meta = Path(exp_dir) / "experimento.json"
-    if meta.exists():
-        try:
-            return json.loads(meta.read_text(encoding="utf-8")).get("sufijos") or [""]
-        except (json.JSONDecodeError, OSError):
-            pass
-    return [""]
+    """Lo que la Pi captura en cada ciclo ("" = una sola foto)."""
+    return _experimento(exp_dir).get("sufijos") or [""]
+
+
+def sufijos_guardados(exp_dir):
+    """Si la Pi calculó el DPC y borró las crudas, lo que queda de cada
+    ciclo (p. ej. ["_dpcLR", "_dpcTB", "_suma"]); si no, None."""
+    return (_experimento(exp_dir).get("dpc_procesado") or {}).get("sufijos")
+
+
+def grupos(carpeta):
+    """{fecha: {sufijo: ruta}} de las imágenes de una carpeta camN. La
+    "fecha" es lo que comparten las fotos de un ciclo: 20260831_121729 o
+    0001_2026-10-02_10-30-00."""
+    salida = {}
+    for f in Path(carpeta).iterdir():
+        m = RE_IMG.match(f.name)
+        if m:
+            salida.setdefault(m.group(1) or m.group(2), {})[m.group(3) or ""] = f
+    return salida
 
 
 def ciclos(entrada):
@@ -129,14 +208,16 @@ def ciclos(entrada):
     if not entrada.is_dir():
         return salida
     for exp in sorted(p for p in entrada.iterdir() if p.is_dir()):
-        sufijos = sufijos_de(exp)
+        capturados, guardados = sufijos_de(exp), sufijos_guardados(exp)
         for cam in sorted(exp.glob("cam*")):
-            grupos = {}
-            for f in cam.iterdir():
-                m = RE_IMG.match(f.name)
-                if m:
-                    grupos.setdefault(m.group(1), {})[m.group(2) or ""] = f
-            for fecha, fotos in sorted(grupos.items()):
+            for fecha, fotos in sorted(grupos(cam).items()):
+                sufijos = capturados
+                # Con crudas borradas se espera lo que calcula la Pi; si a
+                # un ciclo le falló el cálculo, la Pi conserva y manda las
+                # crudas, y entonces se usan esas.
+                if guardados and not (all(s in fotos for s in capturados)
+                                      and not all(s in fotos for s in guardados)):
+                    sufijos = guardados
                 salida.append((exp.name, cam.name, fecha, fotos, sufijos,
                                all(s in fotos for s in sufijos)))
     return salida

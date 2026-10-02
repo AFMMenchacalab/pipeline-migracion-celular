@@ -136,13 +136,27 @@ def normalizar(img, fondo=None, sigma_px=None):
     return img / np.maximum(gaussian_filter(img, s), 1e-6)
 
 
-def reconstruir(fotos, geo, reducir=1, alfa=1e-3, fondos=None, _H=None):
-    """fotos: {"_L", "_R", "_T", "_B"} -> fase en radianes (misma forma)."""
+def dpc_de(fotos, fondos=None):
+    """(DPC_LR, DPC_TB) de un ciclo. Acepta las 4 crudas o, si la Pi ya
+    calculó el DPC y borró las crudas (core/dpc.py), sus _dpcLR y _dpcTB,
+    que ya vienen normalizados por el fondo."""
+    if {"_dpcLR", "_dpcTB"} <= set(fotos):
+        return fotos["_dpcLR"], fotos["_dpcTB"]
     fondos = fondos or {}
     n = {s: normalizar(fotos[s], fondos.get(s)) for s in ("_L", "_R", "_T", "_B")}
     eps = 1e-9
-    d_lr = (n["_L"] - n["_R"]) / (n["_L"] + n["_R"] + eps)
-    d_tb = (n["_T"] - n["_B"]) / (n["_T"] + n["_B"] + eps)
+    return ((n["_L"] - n["_R"]) / (n["_L"] + n["_R"] + eps),
+            (n["_T"] - n["_B"]) / (n["_T"] + n["_B"] + eps))
+
+
+def forma_de(fotos):
+    return (fotos["_dpcLR"] if "_dpcLR" in fotos else fotos["_L"]).shape
+
+
+def reconstruir(fotos, geo, reducir=1, alfa=1e-3, fondos=None, _H=None):
+    """fotos: {"_L", "_R", "_T", "_B"} o {"_dpcLR", "_dpcTB"} -> fase en
+    radianes (misma forma)."""
+    d_lr, d_tb = dpc_de(fotos, fondos)
     forma = d_lr.shape
     H_lr, H_tb = _H if _H is not None else transferencias(geo, forma, reducir)
     D_lr = np.fft.fft2(d_lr - d_lr.mean())
@@ -210,7 +224,7 @@ class ReconstructorEnVivo:
         self._H = {}
 
     def __call__(self, fotos, reducir):
-        forma = fotos["_L"].shape
+        forma = forma_de(fotos)
         if (forma, reducir) not in self._H:
             self._H[(forma, reducir)] = transferencias(self.geo, forma, reducir)
         return reconstruir(fotos, self.geo, reducir, _H=self._H[(forma, reducir)])

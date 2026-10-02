@@ -9,8 +9,12 @@ del intervalo entre fotos (2–5 min). La misma función la usa la interfaz
 gráfica (33_interfaz.py).
 
 Qué es "un ciclo completo": en modo DPC la Pi guarda cuatro fotos por
-tiempo (img_<fecha>_L/_R/_T/_B.tif). Se espera a tener las cuatro; el modo
-y sus sufijos se leen de experimento.json, que la Pi manda al empezar.
+tiempo (0001_<fecha>_<hora>_L/_R/_T/_B.tif; hasta septiembre de 2026,
+img_<fecha>_L/...). Se espera a tener las cuatro; el modo y sus sufijos se
+leen de experimento.json, que la Pi manda al empezar. Si la Pi calcula el
+DPC y borra las crudas (core/dpc.py, por espacio), llegan _dpcLR, _dpcTB y
+_suma en su lugar, y experimento.json lo dice (dpc_procesado.sufijos): las
+mismas entradas funcionan con esos archivos.
 
 Qué imagen recibe Cellpose (--entrada). Todavía NO está decidido cuál
 segmenta mejor las imágenes DPC; se decide en el piloto comparando contra

@@ -1,6 +1,27 @@
 # Estado del proyecto — pipeline Cellpose + laptrack
 
-Última actualización: 2026-09-24 (pipeline v2)
+Última actualización: 2026-10-02 (DPC desde la Pi)
+
+---
+
+## 📌 2026-10-02 — DPC calculado en la Pi y primera captura real
+
+- **La Pi ya no guarda las 4 crudas** (rama `feature/dpc-al-ciclo` de
+  `microscopeos-pi5`, por espacio): deja `_dpcLR.tif`, `_dpcTB.tif` (uint16,
+  valor = (píxel − 32768) / 4096) y `_suma.tif` (campo claro a 1640 px),
+  ~25 MB por cámara y ciclo en vez de 65. `lib/en_vivo.py` los reconoce
+  (`experimento.json` → `dpc_procesado.sufijos`) y las cuatro entradas
+  funcionan igual con ellos; la fase se calcula en la PC desde LR y TB.
+- **Nombres nuevos de la Pi** desde el 2026-10-02: `0001_2026-10-02_10-30-00_L.tif`
+  (antes `img_20260831_121729_L.tif`); se aceptan los dos.
+- **Primera captura DPC propia** (cam0, 2026-10-01 16:27, monocapa con huecos;
+  sin contornos a mano todavía). Cellpose-SAM, `flow 0.4`, `cellprob 0`:
+  `dpc` 110 células con `reducir=4` contra 27 con `reducir=2`; `suma` y
+  `combinada` marcan basura y núcleos sueltos. A `reducir=2` la célula queda
+  demasiado grande para la red. **Sigue pendiente** decidir la entrada y el
+  `reducir` por defecto con contornos dibujados a mano.
+- La fase sin calibrar sale mal (sin difusor es inestable); la Pi usa
+  `distancia_mm = 27` medido en cam0.
 
 ---
 

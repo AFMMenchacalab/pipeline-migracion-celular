@@ -28,7 +28,6 @@ más bajas no se transmiten): sirve para segmentar y comparar entre
 condiciones con el mismo montaje, no como masa seca absoluta sin calibrar.
 """
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -42,19 +41,19 @@ cargar_geometria, guardar_geometria = F.cargar_geometria, F.guardar_geometria
 
 
 def leer_ciclo(carpeta, fecha, reducir):
-    from lib.en_vivo import leer
-    fotos = {}
-    for s in ("_L", "_R", "_T", "_B"):
-        p = Path(carpeta) / f"img_{fecha}{s}.tif"
-        if not p.exists():
-            raise FileNotFoundError(f"falta {p.name}")
-        fotos[s] = leer(p, reducir)
-    return fotos
+    """Las 4 crudas del ciclo o, si la Pi las borró, sus _dpcLR y _dpcTB."""
+    from lib.en_vivo import grupos, leer
+    hay = grupos(carpeta).get(fecha, {})
+    for sufijos in (("_L", "_R", "_T", "_B"), ("_dpcLR", "_dpcTB")):
+        if all(s in hay for s in sufijos):
+            return {s: leer(hay[s], reducir) for s in sufijos}
+    raise FileNotFoundError(f"{fecha}: no están ni las 4 crudas ni _dpcLR/_dpcTB")
 
 
 def fechas(carpeta):
-    r = re.compile(r"^img_(\d{8}_\d{6})_L\.tif$")
-    return sorted(m.group(1) for f in Path(carpeta).iterdir() if (m := r.match(f.name)))
+    from lib.en_vivo import grupos
+    return sorted(f for f, hay in grupos(carpeta).items()
+                  if "_L" in hay or "_dpcLR" in hay)
 
 
 def guardar(phi, carpeta, fecha):
@@ -70,7 +69,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="accion", required=True)
     c = sub.add_parser("calibrar")
-    c.add_argument("carpeta", type=Path, help="carpeta camN con img_<fecha>_L/R/T/B.tif")
+    c.add_argument("carpeta", type=Path, help="carpeta camN con las 4 crudas L/R/T/B o los _dpcLR/_dpcTB de la Pi")
     c.add_argument("--fecha", help="ciclo a usar (por defecto el primero)")
     c.add_argument("--distancia-mm", type=float, required=True, help="LEDs -> muestra, medido")
     c.add_argument("--difusor", action="store_true")
@@ -109,7 +108,7 @@ def main():
     for f in lista:
         fotos = leer_ciclo(args.carpeta, f, args.reducir)
         if H is None:
-            H = F.transferencias(g, fotos["_L"].shape, args.reducir)
+            H = F.transferencias(g, F.forma_de(fotos), args.reducir)
         guardar(F.reconstruir(fotos, g, args.reducir, args.alfa, _H=H), args.carpeta, f)
         print(f"{f}: listo")
 
