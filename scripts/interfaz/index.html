@@ -149,11 +149,19 @@
     <p class="aviso-err oculto" id="segErr"></p>
   </div>
   <div class="panel paso">
-    <h2><span class="num">3</span> Carpeta de imágenes</h2>
-    <p class="ayuda">Lo que llega de la Pi se guarda aquí. Para analizar un experimento copiado de una memoria USB, elige su carpeta (la que contiene <code>timelapse_…</code>).</p>
-    <div class="fila"><label class="campo">Carpeta<input type="text" id="carpeta"></label></div>
-    <div class="fila"><button id="carpetaBtn">Usar esta carpeta</button></div>
-    <dl class="datos"><dt>Máscaras</dt><dd id="dirMasks">—</dd><dt>Resultados</dt><dd id="dirAnal">—</dd></dl>
+    <h2><span class="num">3</span> Fotos de una carpeta</h2>
+    <p class="ayuda">Sin envío en vivo: elige la carpeta con las fotos (tomadas a mano en la Pi o copiadas de una memoria USB). Se agrega a la lista como un experimento más, sin copiar las fotos.</p>
+    <div class="fila"><label class="campo">Carpeta con las fotos<input type="text" id="impRuta" placeholder="Elige o arrastra una carpeta"></label><button id="impElegir" style="align-self:flex-end">Elegir…</button></div>
+    <div class="fila"><label class="campo">Nombre del experimento (opcional)<input type="text" id="impNombre"></label></div>
+    <div class="fila"><button class="prim" id="impBtn">Agregar fotos</button>
+      <label class="ayuda" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="impSeg" checked>segmentar en cuanto se agreguen</label></div>
+    <p class="ayuda" id="impRes"></p>
+    <details style="margin-top:10px"><summary class="ayuda" style="cursor:pointer">Carpeta de entrada y resultados</summary>
+      <p class="ayuda">Lo que llega de la Pi se guarda aquí. Para analizar un experimento copiado de una memoria USB, elige su carpeta (la que contiene <code>timelapse_…</code>).</p>
+      <div class="fila"><label class="campo">Carpeta<input type="text" id="carpeta"></label></div>
+      <div class="fila"><button id="carpetaBtn">Usar esta carpeta</button></div>
+      <dl class="datos"><dt>Máscaras</dt><dd id="dirMasks">—</dd><dt>Resultados</dt><dd id="dirAnal">—</dd></dl>
+    </details>
   </div>
 </section>
 
@@ -308,7 +316,12 @@ async function cargarSerie(){
   try{const j=await api(`/api/serie?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}`);serie=j.filas;}catch(e){serie=[];}
   dibujarSerie();
 }
-function aFecha(f){return new Date(+f.slice(0,4),+f.slice(4,6)-1,+f.slice(6,8),+f.slice(9,11),+f.slice(11,13),+f.slice(13,15));}
+// Ciclo: 20260831_121729 (img_…) o 0001_2026-10-02_10-30-00 (MicroscopeOS desde el 2026-10-02)
+function aFecha(f){
+  const m=f.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/)||f.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  return m?new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]):new Date(NaN);
+}
+const hhmm=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 function dibujarSerie(){
   const svg=$('svg'),W=svg.clientWidth||500,H=190,m={l:40,r:12,t:12,b:26};
   if(!serie.length){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="currentColor" opacity=".6" font-size="13">sin datos todavía</text>`;return;}
@@ -333,7 +346,7 @@ function dibujarSerie(){
     let k=0,best=1e9;xs.forEach((x,i)=>{const dd=Math.abs(X(x)-px);if(dd<best){best=dd;k=i;}});
     cur.setAttribute('x1',X(xs[k]));cur.setAttribute('x2',X(xs[k]));cur.setAttribute('opacity','1');
     const f=serie[k].fecha;tip.style.display='block';tip.style.left=(X(xs[k])*r.width/W)+'px';tip.style.top=(Y(ys[k])*r.height/H)+'px';
-    tip.textContent=`${f.slice(9,11)}:${f.slice(11,13)} · ${ys[k]} células · ${serie[k].segundos} s`;
+    tip.textContent=`${hhmm(aFecha(f))} · ${ys[k]} células · ${serie[k].segundos} s`;
   };
   svg.querySelector('#zona').onmouseleave=()=>{tip.style.display='none';cur.setAttribute('opacity','0');};
 }
@@ -386,6 +399,41 @@ $('segBtn').onclick=async()=>{
   catch(e){alert(e.message);}
   refrescar();
 };
+// ---------- fotos de una carpeta ----------
+function rutaDe(v){                      // acepta file:///… (arrastrar desde el explorador)
+  v=String(v||'').trim().split(/\r?\n/)[0];
+  if(v.startsWith('file://')){try{v=decodeURIComponent(new URL(v).pathname);}catch(e){}
+    if(/^\/[A-Za-z]:\//.test(v))v=v.slice(1);}  // file:///C:/… en Windows
+  return v;
+}
+$('impRuta').ondragover=ev=>ev.preventDefault();
+$('impRuta').ondrop=ev=>{ev.preventDefault();
+  $('impRuta').value=rutaDe(ev.dataTransfer.getData('text/uri-list')||ev.dataTransfer.getData('text/plain'));};
+$('impElegir').onclick=async()=>{
+  $('impElegir').disabled=true;
+  try{const r=await api('/api/elegir_carpeta',{inicial:rutaDe($('impRuta').value)||undefined});if(r.ruta)$('impRuta').value=r.ruta;}
+  catch(e){alert(e.message);}
+  finally{$('impElegir').disabled=false;}
+};
+$('impBtn').onclick=async()=>{
+  const ruta=rutaDe($('impRuta').value);
+  if(!ruta){alert('Elige primero la carpeta con las fotos.');return;}
+  $('impBtn').disabled=true;$('impRes').textContent='buscando fotos…';
+  try{
+    const r=await api('/api/importar',{ruta,nombre:$('impNombre').value});
+    const que=r.modo==='dpc'?(r.sufijos[0]==='_dpcLR'?'DPC ya calculado en la Pi':'DPC (L, R, T, B)'):'una foto por ciclo';
+    $('impRes').textContent=`«${r.experimento}»: ${r.ciclos} ciclo${r.ciclos===1?'':'s'} (${que})`+(r.nuevos?'':', sin fotos nuevas');
+    if($('impSeg').checked&&E&&E.segmentacion.estado==='detenido')
+      await api('/api/segmentacion',{accion:'iniciar',entrada:$('segEntrada').value,reducir:+$('segReducir').value});
+    await refrescar();elegir(r.experimento);
+  }catch(e){$('impRes').textContent='';alert(e.message);}
+  finally{$('impBtn').disabled=false;}
+};
+// La página recuerda la última entrada y reducción elegidas (solo en este navegador).
+['segEntrada','segReducir'].forEach(id=>{
+  try{const v=localStorage.getItem(id);if(v&&[...$(id).options].some(o=>o.value===v))$(id).value=v;}catch(e){}
+  $(id).addEventListener('change',()=>{try{localStorage.setItem(id,$(id).value);}catch(e){}});
+});
 $('carpeta').oninput=()=>{carpetaEditada=true;};
 $('carpetaBtn').onclick=async()=>{
   try{await api('/api/carpeta',{ruta:$('carpeta').value});carpetaEditada=false;sel.exp=null;

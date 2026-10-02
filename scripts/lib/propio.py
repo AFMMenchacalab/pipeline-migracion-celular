@@ -8,14 +8,14 @@ penalización de cambio de tamaño, cierre de huecos de hasta 3 ciclos), y
 las mismas medidas del reporte: rapidez, direccionalidad, α de cada célula,
 EAD₁ corregida, MSD del ensamble con ajuste de caminata persistente.
 
-El tiempo se toma de la fecha de cada ciclo (img_<AAAAMMDD_HHMMSS>), no se
-supone: si un ciclo falta, queda un hueco en vez de juntar dos tiempos.
+El tiempo se toma de la fecha de cada ciclo (img_<AAAAMMDD_HHMMSS> o, con
+los nombres de MicroscopeOS desde el 2026-10-02, 0001_<AAAA-MM-DD_HH-MM-SS>),
+no se supone: si un ciclo falta, queda un hueco en vez de juntar dos tiempos.
 
 Salida en ~/microscopio_cache/analisis/propio/<experimento>/<cam>/:
   tracks.csv, por_celula.csv, resumen.json, trayectorias.png, msd.png
 """
 import json
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +24,7 @@ import pandas as pd
 from .config import DATASETS
 from . import entropia as E
 from . import motilidad as M
+from .importar import fecha_de
 
 PROPS = ("label", "centroid", "area", "bbox", "eccentricity", "solidity",
          "major_axis_length", "minor_axis_length", "perimeter")
@@ -35,12 +36,11 @@ def serie(salida, exp, cam):
     """[(fecha, datetime, ruta npz)] ordenado por tiempo."""
     d = Path(salida) / exp / cam
     filas = []
-    for p in sorted(d.glob("*.npz")):
-        try:
-            filas.append((p.stem, datetime.strptime(p.stem, "%Y%m%d_%H%M%S"), p))
-        except ValueError:
-            continue
-    return filas
+    for p in d.glob("*.npz"):
+        cuando = fecha_de(p.stem)
+        if cuando is not None:
+            filas.append((p.stem, cuando, p))
+    return sorted(filas, key=lambda f: f[1])
 
 
 def detecciones(filas, area_min_um2=AREA_MIN_UM2):
@@ -154,11 +154,16 @@ def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None):
 
 def _fondo(entrada_dir, exp, cam, fecha, forma):
     """Imagen de fondo para dibujar las trayectorias: la suma de las fotos
-    del último ciclo, al tamaño de las máscaras. Si no está, fondo gris."""
+    del último ciclo (o el campo claro que guardó la Pi), al tamaño de las
+    máscaras. Si no está, fondo gris."""
     import cv2
     import tifffile
-    if entrada_dir:
-        fotos = sorted((Path(entrada_dir) / exp / cam).glob(f"img_{fecha}*.tif"))
+    from .en_vivo import grupos
+    carpeta = Path(entrada_dir) / exp / cam if entrada_dir else None
+    if carpeta and carpeta.is_dir():
+        hay = grupos(carpeta).get(fecha, {})
+        fotos = ([hay["_suma"]] if "_suma" in hay else
+                 [hay[s] for s in ("_L", "_R", "_T", "_B", "") if s in hay])
         if fotos:
             img = np.mean([tifffile.imread(f).astype(np.float32) for f in fotos], axis=0)
             if img.ndim == 3:

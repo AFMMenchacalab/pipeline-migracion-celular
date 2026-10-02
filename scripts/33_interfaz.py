@@ -2,7 +2,9 @@
 Interfaz gráfica del pipeline para el microscopio propio (corre en la PC).
 
 Junta en un solo programa, con una página web local:
-  1. Recepción de las imágenes que manda la Raspberry Pi (lib/receptor.py).
+  1. Recepción de las imágenes que manda la Raspberry Pi (lib/receptor.py),
+     o fotos de una carpeta cualquiera (tomadas a mano, de una memoria USB;
+     lib/importar.py).
   2. Segmentación en vivo con Cellpose-SAM, ciclo por ciclo (lib/en_vivo.py),
      con la última imagen segmentada a la vista.
   3. Tracking y estadística de cada experimento (lib/propio.py): trayectorias
@@ -21,6 +23,8 @@ import argparse
 import csv
 import json
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -34,6 +38,7 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.config import ROOT, cache_dir  # noqa: E402
 from lib import en_vivo as EV  # noqa: E402
+from lib import importar as IMP  # noqa: E402
 from lib.receptor import (Receptor, cargar_o_crear_codigo, codigo_nuevo,  # noqa: E402
                           guardar_codigo, ips_locales)
 
@@ -42,6 +47,25 @@ RE_NOMBRE = re.compile(r"^[A-Za-z0-9_\-]{1,80}$")
 RE_CAM = re.compile(r"^cam\d$")
 IMAGENES = {"ultima": ("masks", "ultima.png"), "trayectorias": ("analisis", "trayectorias.png"),
             "msd": ("analisis", "msd.png")}
+
+
+def elegir_carpeta(inicial=None):
+    """Abre el selector de carpetas del sistema en esta PC y devuelve la
+    ruta elegida ("" si se cancela). En un proceso aparte: el servidor no
+    tiene ventana propia. zenity en Linux; si no está, el de tkinter (que
+    trae Python también en Windows)."""
+    inicial = str(Path(inicial or Path.home()).expanduser())
+    if shutil.which("zenity"):
+        cmd = ["zenity", "--file-selection", "--directory",
+               "--title=Carpeta con las fotos", f"--filename={inicial.rstrip('/')}/"]
+    else:
+        cmd = [sys.executable, "-c",
+               "import sys, tkinter as tk; from tkinter import filedialog as fd; "
+               "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True); "
+               "print(fd.askdirectory(title='Carpeta con las fotos', initialdir=sys.argv[1]) or '')",
+               inicial]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    return r.stdout.strip()
 
 
 class Estado:
@@ -323,6 +347,23 @@ def crear_manejador(est):
                     return self._enviar(400, {"error": "parámetros inválidos"})
                 est.analizar(exp, cam)
                 return self._enviar(200, {"estado": "corriendo"})
+            if ruta == "/api/importar":
+                try:
+                    r = IMP.importar(str(datos.get("ruta", "")), est.entrada_dir,
+                                     str(datos.get("nombre") or "").strip() or None)
+                except ValueError as e:
+                    return self._enviar(400, {"error": str(e)})
+                est.anotar(f"fotos de {datos.get('ruta')}: {r['ciclos']} ciclos "
+                           f"({r['nuevos']} archivos nuevos) en {r['experimento']}")
+                return self._enviar(200, r)
+            if ruta == "/api/elegir_carpeta":
+                # Abre una ventana en ESTA PC: solo si la página se usa desde aquí.
+                if self.client_address[0] not in ("127.0.0.1", "::1"):
+                    return self._enviar(403, {"error": "El selector solo funciona desde esta PC; escribe la ruta"})
+                try:
+                    return self._enviar(200, {"ruta": elegir_carpeta(datos.get("inicial"))})
+                except (OSError, subprocess.SubprocessError) as e:
+                    return self._enviar(400, {"error": f"No se pudo abrir el selector ({e}); escribe la ruta"})
             if ruta == "/api/carpeta":
                 if est.receptor.activo() or est.seg["estado"] != "detenido":
                     return self._enviar(400, {"error": "Detén la recepción y la segmentación antes de cambiar de carpeta"})
