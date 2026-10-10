@@ -29,7 +29,33 @@ SUFIJOS_PI = ("_dpcLR", "_dpcTB", "_suma", "_fase")
 RE_IMG = re.compile(r"^(?:img_(\d{8}_\d{6})|(\d{4}_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}))"
                     r"(_[LRTB]|_dpcLR|_dpcTB|_suma|_fase)?\.tif$")
 ETIQUETA_PI = 65000         # TIFF tag con el JSON de metadatos de MicroscopeOS
-ENTRADAS = ("suma", "dpc", "combinada", "fase")
+ENTRADAS = ("suma", "dpc", "combinada", "fase", "combinada+dpc")
+# combinada+dpc (prueba 11, MG63 con etopósido, 2026-10-10): la combinada no
+# ve las células oscuras y granulosas, la magnitud del DPC sí, pero pierde
+# las planas y tenues. Se corre Cellpose con las dos y a lo de la combinada
+# se le agrega lo del DPC que no se encima (< UNION_ENCIME_MAX de su área).
+# Con células sueltas el filtro de forma quitaba células alargadas o muy
+# extendidas: en este modo solo se quitan los objetos diminutos.
+# La magnitud del DPC se suaviza antes de Cellpose: las células planas son
+# una textura salpicada y suavizada queda como una mancha completa (cam1
+# día 3: 25 -> 35 células). Con eso aparecen también algunos objetos en
+# zonas vacías; de lo que agrega el DPC se quedan solo los que tienen un
+# DPC medio de al menos UNION_CONTRASTE_MIN veces el del fondo (falsos:
+# 1.2-1.7, células: 1.8 o más). Lo de la combinada no se filtra así: hay
+# células planas que encuentra con contraste 1.3.
+UNION_ENCIME_MAX = 0.2
+DPC_SUAVIZADO_UM = 2.0
+UNION_CONTRASTE_MIN = 1.7
+# Fondo del campo claro en la entrada combinada: el mismo suavizado que usa
+# la Pi para el DPC (core/dpc.py, sigma 150 px a resolución completa).
+SIGMA_FONDO_PX = 150
+# Filtro de forma después de Cellpose (ajustado con prueba 7, 2026-10-05):
+# con flow_threshold 0.8 aparecen las células de las láminas que con 0.4 se
+# descartaban, y también algunas rebanadas y astillas que no son células.
+FORMA_AREA_MIN_UM2 = 80
+FORMA_SOLIDEZ_MIN = 0.75
+FORMA_EJE_MENOR_MIN_UM = 6
+FORMA_ASPECTO_MAX = 4
 _FASE = None                # ReconstructorEnVivo, se crea al primer uso
 
 
@@ -120,11 +146,16 @@ def preparar(fotos, sufijos, modo, reducir=1):
     tb = (n["_T"] - n["_B"]) / (n["_T"] + n["_B"] + eps)
     if modo == "dpc":
         return np.sqrt(lr ** 2 + tb ** 2), None
-    return _combinar(suma, lr, tb), 2
+    return _combinar(suma, lr, tb, reducir), 2
 
 
-def _combinar(suma, lr, tb, eps=1e-6):
-    s = (suma - suma.mean()) / (suma.std() + eps)
+def _combinar(suma, lr, tb, reducir, eps=1e-6):
+    # El campo claro se divide por su fondo: con el viñeteado de la matriz
+    # el centro queda tan brillante que, sin aplanar, Cellpose no ve las
+    # células planas de esa zona (prueba 7: cobertura 0.47 -> 0.60).
+    from scipy.ndimage import gaussian_filter
+    plano = suma / np.maximum(gaussian_filter(suma, SIGMA_FONDO_PX / reducir), eps)
+    s = (plano - plano.mean()) / (plano.std() + eps)
     return np.stack([s, lr / (lr.std() + eps), tb / (tb.std() + eps)], axis=-1)
 
 
@@ -146,7 +177,54 @@ def _preparar_pi(fotos, modo, reducir):
                          "experimento no lo guardó: usar 'dpc' o 'fase'")
     if modo == "suma":
         return fotos["_suma"], None
-    return _combinar(fotos["_suma"], lr, tb), 2
+    return _combinar(fotos["_suma"], lr, tb, reducir), 2
+
+
+def filtrar_formas(masks, um_por_px):
+    """Quita los objetos que no parecen células: diminutos, delgados
+    (rebanadas, astillas en los bordes) o poco compactos. Renumera."""
+    from skimage.measure import regionprops
+    from skimage.segmentation import relabel_sequential
+    fuera = []
+    for p in regionprops(masks):
+        menor = max(p.axis_minor_length, 1e-6)
+        if (p.area * um_por_px ** 2 < FORMA_AREA_MIN_UM2 or p.solidity < FORMA_SOLIDEZ_MIN
+                or menor * um_por_px < FORMA_EJE_MENOR_MIN_UM
+                or p.axis_major_length / menor > FORMA_ASPECTO_MAX):
+            fuera.append(p.label)
+    if fuera:
+        masks = np.where(np.isin(masks, fuera), 0, masks)
+    return relabel_sequential(masks)[0]
+
+
+def quitar_diminutos(masks, um_por_px):
+    """Solo la parte del área de filtrar_formas. Renumera."""
+    from skimage.segmentation import relabel_sequential
+    areas = np.bincount(masks.ravel())
+    fuera = np.flatnonzero(areas * um_por_px ** 2 < FORMA_AREA_MIN_UM2)
+    masks = np.where(np.isin(masks, fuera[fuera > 0]), 0, masks)
+    return relabel_sequential(masks)[0]
+
+
+def unir(base, extra, mag=None):
+    """base + los objetos de extra que se enciman menos de UNION_ENCIME_MAX
+    de su área con base (solo en los píxeles libres). Con mag (magnitud del
+    DPC), solo los de extra con contraste >= UNION_CONTRASTE_MIN."""
+    salida = base.astype(np.int32)
+    n = int(salida.max())
+    areas = np.bincount(extra.ravel())
+    encime = np.bincount(extra[base > 0].ravel(), minlength=len(areas))
+    if mag is not None:
+        fondo = np.median(mag[(base == 0) & (extra == 0)])
+        media = np.bincount(extra.ravel(), weights=mag.ravel()) / np.maximum(areas, 1)
+    for etq in np.flatnonzero(areas[1:]) + 1:
+        if encime[etq] >= UNION_ENCIME_MAX * areas[etq]:
+            continue
+        if mag is not None and media[etq] < UNION_CONTRASTE_MIN * fondo:
+            continue
+        n += 1
+        salida[(extra == etq) & (salida == 0)] = n
+    return salida
 
 
 def a_8bits(img):
@@ -231,22 +309,37 @@ def pendientes(entrada, salida):
 
 def segmentar_ciclo(model, exp, cam, fecha, fotos, sufijos, destino, entrada="suma",
                     reducir=2, flow_threshold=0.4, cellprob_threshold=0.0,
-                    guardar_flows=False):
+                    guardar_flows=False, filtrar=True):
     """Segmenta un ciclo y guarda máscaras, superposición y registro.
     Devuelve (número de células, segundos)."""
     t0 = time.time()
     imgs = {s: leer(fotos[s], reducir) for s in sufijos}
-    img, eje_canal = preparar(imgs, sufijos, entrada, reducir)
+    union = entrada == "combinada+dpc"
+    img, eje_canal = preparar(imgs, sufijos, "combinada" if union else entrada, reducir)
     masks, flows, _ = model.eval(img, batch_size=16, channel_axis=eje_canal,
                                  flow_threshold=flow_threshold,
                                  cellprob_threshold=cellprob_threshold)
+    if union:
+        from scipy.ndimage import gaussian_filter
+        mag, _ = preparar(imgs, sufijos, "dpc", reducir)
+        img_dpc = gaussian_filter(mag, DPC_SUAVIZADO_UM / (UM_POR_PX * reducir))
+        masks_dpc = model.eval(img_dpc, batch_size=16, channel_axis=None,
+                               flow_threshold=flow_threshold,
+                               cellprob_threshold=cellprob_threshold)[0]
+        if filtrar:
+            masks = quitar_diminutos(masks, UM_POR_PX * reducir)
+            masks_dpc = quitar_diminutos(masks_dpc, UM_POR_PX * reducir)
+        masks = unir(masks, masks_dpc, mag)
+    elif filtrar:
+        masks = filtrar_formas(masks, UM_POR_PX * reducir)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     extra = {}
     if guardar_flows:
         extra = {"dP": flows[1].astype(np.float16), "cellprob": flows[2].astype(np.float16)}
     np.savez_compressed(destino, masks=masks.astype(np.uint16), um_por_px=UM_POR_PX * reducir,
-                        entrada=entrada, reducir=reducir, **extra)
+                        entrada=entrada, reducir=reducir, flow_threshold=flow_threshold,
+                        cellprob_threshold=cellprob_threshold, filtro_formas=filtrar, **extra)
     superposicion(img, masks, destino.parent / "ultima.png")
     dt = time.time() - t0
     n_cel = int(masks.max())

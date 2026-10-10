@@ -80,12 +80,32 @@ Windows basta con aceptar el aviso de Windows Defender la primera vez
 (marcar *Redes privadas*). En Linux con firewalld:
 `sudo firewall-cmd --add-port=8765/tcp --add-port=8766/udp --permanent && sudo firewall-cmd --reload`.
 
+## Marcar células a mano (opcional)
+
+Sirve para medir qué tan bien segmenta Cellpose y para entrenarlo. Se puede
+hacer en una PC sin GPU: no corre Cellpose.
+
+1. En la PC donde se segmentó el experimento se arma un paquete con solo
+   las fotos a marcar (~330 MB):
+   `venv/bin/python scripts/38_paquete_anotar.py <experimento> --salida <carpeta>`.
+2. Se copia esa carpeta a esta PC (memoria USB, Drive…) sin cambiarle el
+   nombre.
+3. En la interfaz: **Agregar fotos de una carpeta** → elegir la carpeta del
+   paquete → **Agregar fotos**. Después, elegir el experimento en la lista y
+   abrir **Contornos a mano ↗** (junto al nombre).
+4. Marcar **todas** las células de cada foto, rodeándolas con el mouse
+   (las instrucciones están en la página). Las fotos con la etiqueta
+   **desde cero** se marcan sin ver lo de Cellpose; en las demás se puede
+   usar **Partir de Cellpose** y corregir.
+5. Al terminar: **Descargar marcas (.zip)** y mandar ese archivo.
+
 ## Dónde queda todo
 
 | Qué | Dónde |
 |---|---|
 | Imágenes recibidas | `datasets/microscopio_propio/<experimento>/cam<N>/` |
 | Máscaras | `~/microscopio_cache/masks/propio/<experimento>/cam<N>/` |
+| Contornos a mano | `~/microscopio_cache/anotaciones/propio/<experimento>/` |
 | Resultados del análisis | `~/microscopio_cache/analisis/propio/<experimento>/cam<N>/` (`tracks.csv`, `por_celula.csv`, `resumen.json`, figuras) |
 
 ## Sin interfaz (consola)

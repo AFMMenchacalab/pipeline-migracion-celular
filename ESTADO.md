@@ -1,6 +1,119 @@
 # Estado del proyecto — pipeline Cellpose + laptrack
 
-Última actualización: 2026-10-02 (DPC desde la Pi)
+Última actualización: 2026-10-10 (prueba 11: segmentación combinada+dpc y contornos a mano)
+
+---
+
+## 📌 2026-10-10 — Prueba 11 (MG63, etopósido): segmentación combinada+dpc y contornos a mano
+
+Timelapse de 805 ciclos × 2 cámaras cada 3.5 min (7–9 oct). **cam0 =
+control, cam1 = etopósido** (no son réplicas). Línea MG63. La copia desde
+la Pi llegó incompleta (cam0: 60 TIFF de 0 bytes; cam1: 150 faltan); el
+log de la Pi dice que sí se guardaron: análisis provisional hasta volver a
+copiar. Según lo visto en el timelapse, con etopósido casi no se mueven ni
+se dividen pero sí se aplanan; el control se divide y se mueve.
+
+- Con células sueltas, la `combinada` con filtro de forma perdía muchas:
+  el filtro quitaba las alargadas y extendidas, y la combinada no ve las
+  oscuras y granulosas del etopósido. La magnitud del DPC sí las ve, pero
+  pierde las planas y tenues.
+- **Entrada nueva `combinada+dpc`** (`lib/en_vivo.py`): Cellpose con la
+  combinada y con la magnitud del DPC suavizada (σ 2 µm); a la combinada se
+  le agrega lo del DPC que no se encima y tiene DPC medio ≥ 1.7 × el fondo
+  (los falsos de zonas vacías: 1.2–1.7). Solo se quitan objetos < 80 µm².
+  Con `cellprob_threshold -1`. Fotos de prueba: cam0 inicio 24 → 35,
+  cam1 día 3 16 → 35. Tarda ~3.6 s por ciclo y cámara.
+- Descartado: bajar más el umbral (la combinada se satura en ~16 en cam1
+  día 3), la `_fase.tif` de la Pi (rayas), canales [fase, LR, TB] o
+  [magnitud, LR, TB] (peores que la combinada).
+- Sin contornos a mano todavía: comparado a ojo en 4–6 fotos.
+- **Contornos a mano** (página `/anotar` de la interfaz, `lib/anotar.py`):
+  14 fotos al azar repartidas en el tiempo; las 2 primeras y las 2 últimas
+  se marcan desde cero (miden a Cellpose: sensibilidad y precisión con
+  IoU ≥ 0.5), las demás se pueden corregir a partir de Cellpose (para
+  entrenar). `38_paquete_anotar.py` arma un paquete con solo esas fotos
+  (~330 MB) para marcarlas en otra PC; las marcas vuelven en un .zip.
+- Trampas encontradas: el importador quita `_suma` de todo el experimento
+  si falta en algún ciclo; cualquier POST a `/api/segmentacion` que no sea
+  «iniciar» la detiene.
+
+---
+
+## 📌 2026-10-05 — Entrada y parámetros de segmentación para las fotos DPC (prueba 7)
+
+Timelapse de 72 h (829 ciclos × 2 cámaras, cada 5 min, DPC con crudas
+borradas). Sin contornos a mano: se comparó contra la "zona con células"
+(textura del DPC sobre el fondo; subestima los bordes planos de las
+láminas, sirve para comparar configuraciones entre sí) en 12 ciclos del
+inicio al final de las dos cámaras, y se revisó cada candidata a ojo
+sobre la fase reconstruida.
+
+- **`suma` (campo claro) no sirve con este montaje**: el viñeteado de la
+  matriz deja el centro tan brillante que Cellpose no ve las células planas
+  (34 células donde hay ~130).
+- **Aplanar el campo claro dentro de `combinada`** (dividir por su fondo,
+  sigma 150 px a resolución completa, como el DPC de la Pi) es lo que más
+  mejora: cobertura 0.47 → 0.60 en cam0. Hecho en `_combinar()`.
+- **`reducir 3`** fue el mejor en promedio (2 deja las células demasiado
+  grandes; 4–5 pierden las redondas chicas y caen más en cam1).
+- **`flow_threshold 0.8` + filtro de forma** (área ≥ 80 µm², solidez ≥ 0.75,
+  eje menor ≥ 6 µm, alargamiento ≤ 4; `filtrar_formas()`): en los ciclos
+  difíciles Cellpose detectaba las células de las láminas y las descartaba
+  por el control de flujo (77 → 110 células); el filtro quita las rebanadas
+  y astillas que aparecen al aflojarlo. Con 0 (sin control) quedan basura.
+- `cellprob −1` siempre empeoró (junta células). La **fase** sola o como
+  canal (`fase_dpc`) quedó por detrás de `combinada` aplanada; la normalización
+  local de Cellpose (`tile_norm`) tampoco ayudó.
+- Fase sin calibración guardada: con `distancia_mm 27` la orientación sale
+  clara (espejo_x −1, espejo_y 1); se usó solo para mirar, no se guardó.
+- **Límite que queda**: hacia el final (día 3) muchas células se aplanan,
+  se extienden y se enciman; los bordes entre células casi no se ven ni a
+  ojo y el modelo general pierde buena parte de esas láminas (sobre todo en
+  cam1). Para eso hace falta entrenar Cellpose con contornos dibujados a
+  mano de estas imágenes.
+- Defaults nuevos: interfaz y `32_segmentar_en_vivo.py` → `combinada`,
+  reducir 3, flow 0.8, filtro de forma.
+
+### Tracking con cúmulos, basura y reporte (mismo día)
+
+- `lib/propio.py`: cada detección lleva `grupo` (células en su cúmulo:
+  máscaras que se tocan + zona con textura del DPC aunque no esté
+  segmentada; tamaño = máx(máscaras, área / área típica)). Con
+  `max_grupo=N` el tracking se hace con todas y la estadística usa solo los
+  tramos en grupos ≤ N (`<cam>/hasta_N/`; en la interfaz, `max_grupo` en
+  `/api/analizar` y selector «Células que entran en la estadística» en la
+  página: todas, solo sueltas, grupos de hasta 3 o 5; la persistencia P se
+  muestra como "no medible" si es menor que el intervalo entre fotos).
+- **Basura**: se descartan las trayectorias con área mediana < 150 µm²
+  (manchas compactas e inmóviles; en cam1 de prueba 7 eran casi todas las
+  "sueltas"). cam0 140 y cam1 274 trayectorias descartadas.
+- Prueba 7, todas las células: 1636 / 1253 trayectorias; rapidez paso a paso
+  0.25 / 0.28 µm/min; α ensamble 0.84 / 0.75 (confinado). Grupos ≤ 3: solo
+  ~5–6 % de las detecciones; 114 / 83 trayectorias, más redondas
+  (circularidad 0.83 vs 0.70) y más lentas paso a paso.
+- `scripts/35_reporte_experimento.py EXP [--max-grupo N]`: reporte HTML de
+  tracking y morfología (SVG con colores del tema, sin el borde de la imagen
+  para la forma, MSD con la diferencia real de frame). Reportes de prueba 7:
+  https://claude.ai/artifact/4UPRVnFRLFMT1TN3XGVpVR (todas) y
+  https://claude.ai/artifact/D3G4e8H5T6wDjBooJaugzB (sueltas); copia en
+  `analisis/` de la carpeta del experimento.
+- **Prueba 7 = 4T1; cam0 y cam1 son dos cajas de Petri distintas** (misma
+  línea y condiciones): cada cámara es una réplica.
+- `36_estadisticas_propio.py EXP [--max-grupo N]`: el motor de
+  `16_estadisticas` (MSD, α corto/largo, PRW, VACF, EAD, SE, alineamiento,
+  forma) por caja y por ventanas de 12 h → `analisis/propio/EXP/estadisticas/`.
+- `37_reporte_propio.py EXP --linea 4T1 [--max-grupo N]`: reporte con el
+  formato del reporte v2 (índice, hallazgos, validación, resultados por
+  caja, tiempo, forma, cúmulos, comparación con MDA-MB-231, glosario,
+  anexos, videos). Publicado en los mismos links de arriba (versión 2).
+  Resultado principal: las dos cajas concuerdan (rapidez 0.61/0.60 µm/min,
+  α 0.87/0.82, EAD₁ 0.98/0.97) pese a densidad 293 vs 152 /mm²; sin
+  persistencia medible a 5 min (VACF(1) −0.07/−0.09); coordinación entre
+  vecinas que no decae con la distancia; rapidez sube con el índice de forma q
+  (0.17 → 0.38 µm/min del decil más compacto al más irregular, ρ ≈ 0.2).
+- Ojo: `propio.analizar` sigue calculando α individual y el MSD de
+  `resumen.json` con el índice de fila (no la diferencia de frame); el
+  reporte usa la diferencia de frame para el MSD del ensamble.
 
 ---
 

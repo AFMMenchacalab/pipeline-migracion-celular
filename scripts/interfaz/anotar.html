@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contornos a mano</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a0f1c'/%3E%3Cpath d='M6 15c0-5 4-9 8-8s5 6 1 9-9 3-9-1z' fill='none' stroke='%2322c55e' stroke-width='1.8'/%3E%3C/svg%3E">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Fira+Sans:wght@400;500;600&display=swap');
+  :root{
+    --font-ui:'Fira Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-mono:'Fira Code',ui-monospace,Consolas,monospace;
+    --bg:#0a0f1c; --panel:#141c2e; --panel2:#1b2336; --line:rgba(100,116,139,.35); --line-strong:#334155;
+    --text:#f1f5f9; --dim:#a3b3c7; --green:#22c55e; --green-soft:rgba(34,197,94,.16);
+    --amber:#f6b352; --red:#ef4444; --ring:rgba(34,197,94,.55); --radius:14px; --radius-sm:9px;
+  }
+  :root[data-theme="light"]{
+    --bg:#eef2f6; --panel:#ffffff; --panel2:#e7ecf2; --line:rgba(71,85,105,.25); --line-strong:#cbd5e1;
+    --text:#0f172a; --dim:#516072; --green:#15803d; --green-soft:rgba(21,128,61,.12);
+    --amber:#b45309; --red:#b91c1c; --ring:rgba(21,128,61,.5);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#eef2f6; --panel:#ffffff; --panel2:#e7ecf2; --line:rgba(71,85,105,.25); --line-strong:#cbd5e1;
+      --text:#0f172a; --dim:#516072; --green:#15803d; --green-soft:rgba(21,128,61,.12);
+      --amber:#b45309; --red:#b91c1c; --ring:rgba(21,128,61,.5);
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.45;display:flex;flex-direction:column;padding:12px;gap:10px}
+  button,select{font:inherit;color:inherit}
+  a{color:var(--green)}
+  .cab{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .cab h1{font-size:18px;font-weight:600}
+  .cab h1 small{font-family:var(--font-mono);font-size:12.5px;color:var(--dim);font-weight:400;margin-left:8px}
+  .cab .esp{flex:1}
+  button{cursor:pointer;border:1px solid var(--line-strong);background:var(--panel2);border-radius:var(--radius-sm);padding:6px 12px;font-weight:500}
+  button:hover:not(:disabled){border-color:var(--green)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.prim{background:var(--green);border-color:var(--green);color:#04130a;font-weight:600}
+  button.act{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  button:focus-visible,select:focus{outline:2px solid var(--ring);outline-offset:1px}
+  select{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 8px}
+  label.chk{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--dim);cursor:pointer}
+  .cuerpo{flex:1;min-height:0;display:grid;grid-template-columns:270px minmax(0,1fr);gap:10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px;min-height:0}
+  .lado{display:flex;flex-direction:column;gap:10px;overflow:auto}
+  .lado h2{font-size:11.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);font-weight:600}
+  .fotos{display:flex;flex-direction:column;gap:6px}
+  .foto{display:flex;justify-content:space-between;gap:8px;text-align:left;padding:7px 10px;font-weight:400;font-size:13px}
+  .foto b{font-family:var(--font-mono);font-weight:500}
+  .foto span{color:var(--dim);font-size:12px}
+  .foto.sel{border-color:var(--green);background:var(--green-soft)}
+  .foto .ok{color:var(--green)}
+  .foto .cero{font-style:normal;color:var(--amber);font-size:11px;border:1px solid currentColor;border-radius:5px;padding:0 4px}
+  .ayuda{font-size:12.5px;color:var(--dim)}
+  .ayuda kbd{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--line-strong);border-radius:4px;padding:0 4px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--font-mono)}
+  th{color:var(--dim);font-weight:500;font-family:var(--font-ui)}
+  th:first-child,td:first-child{text-align:left}
+  .lienzo{position:relative;display:flex;flex-direction:column;gap:8px;padding:10px}
+  .herr{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .herr .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+  #marco{flex:1;min-height:300px;position:relative;background:#05080f;border-radius:var(--radius-sm);overflow:hidden;touch-action:none}
+  #marco canvas{position:absolute;inset:0;width:100%;height:100%}
+  #marco.dibujar{cursor:crosshair}
+  #marco.borrar{cursor:not-allowed}
+  #marco.mover{cursor:grab}
+  .estado{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;align-items:center}
+  .estado b{font-family:var(--font-mono);font-weight:500}
+  .sin{color:var(--amber)}
+  .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:14px;text-align:center;padding:20px;pointer-events:none}
+  .oculto{display:none!important}
+  @media (max-width:900px){.cuerpo{grid-template-columns:1fr}.lado{max-height:none}#marco{min-height:60vh}}
+</style>
+</head>
+<body>
+<header class="cab">
+  <h1>Contornos a mano<small id="nomExp">—</small></h1>
+  <span class="esp"></span>
+  <a href="/" id="volver">← Volver a la interfaz</a>
+</header>
+
+<div class="cuerpo">
+  <aside class="panel lado">
+    <p class="ayuda">Opcional. Marca a mano todas las células de unas cuantas fotos elegidas al azar a lo largo del experimento. Sirve para medir qué tan bien segmenta Cellpose y, más adelante, para entrenarlo.</p>
+    <h2>Fotos</h2>
+    <div class="fotos" id="fotos"><p class="ayuda">Cargando…</p></div>
+    <button id="otra">Otra foto al azar</button>
+    <a id="zip" href="#" download>Descargar marcas (.zip)</a>
+    <h2>Cellpose contra lo marcado</h2>
+    <div id="resumen"><p class="ayuda">Aparece al guardar una foto que ya esté segmentada.</p></div>
+    <p class="ayuda">Solo cuentan las fotos marcadas desde cero. Sensibilidad: de las células marcadas, cuántas encontró Cellpose. Precisión: de lo que encontró Cellpose, cuánto era una célula. Cuenta como encontrada si se enciman al menos a la mitad (IoU ≥ 0.5).</p>
+    <h2>Cómo se usa</h2>
+    <p class="ayuda">
+      <b>Dibujar</b> (<kbd>D</kbd>): mantén el botón y rodea la célula; al soltar se cierra.<br>
+      <b>Borrar</b> (<kbd>E</kbd> o clic derecho): clic dentro de un contorno.<br>
+      <b>Mover</b>: rueda para acercar; arrastra con <kbd>Espacio</kbd>, el botón central o la herramienta Mover (<kbd>M</kbd>).<br>
+      <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer · <kbd>Ctrl</kbd>+<kbd>S</kbd> guardar · <kbd>N</kbd> siguiente foto · <kbd>C</kbd> ver Cellpose · <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> vista.<br>
+      Las fotos <b>desde cero</b> se marcan sin ver lo de Cellpose (miden qué tan bien segmenta); en las demás puedes usar «Partir de Cellpose» y corregir: borrar lo que no sea célula, agregar las que falten y redibujar los contornos mal hechos.<br>
+      Marca cada célula entera, también las planas y tenues; si dos se tocan, márcalas por separado. Lo que no sea célula, no lo marques.
+    </p>
+  </aside>
+
+  <main class="panel lienzo">
+    <div class="herr">
+      <button id="hDibujar" class="act" title="Dibujar (D)">Dibujar</button>
+      <button id="hBorrar" title="Borrar (E)">Borrar</button>
+      <button id="hMover" title="Mover (M)">Mover</button>
+      <span class="sep"></span>
+      <select id="vista" title="Imagen de fondo (1, 2, 3)">
+        <option value="campo">Campo claro aplanado</option>
+        <option value="dpc">Relieve (magnitud del DPC)</option>
+        <option value="color">Relieve en color (DPC)</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="verCp"> Ver Cellpose</label>
+      <button id="partir" title="Copia los contornos de Cellpose para corregirlos">Partir de Cellpose</button>
+      <span class="sep"></span>
+      <button id="deshacer" title="Ctrl+Z">Deshacer</button>
+      <button id="ajustar" title="Ver la foto completa">Ver completa</button>
+      <span class="esp" style="flex:1"></span>
+      <button id="guardar" class="prim" title="Ctrl+S">Guardar</button>
+      <button id="sig" title="N">Siguiente →</button>
+    </div>
+    <div id="marco" class="dibujar"><canvas id="cv"></canvas><div class="msg" id="msg">Cargando…</div></div>
+    <div class="estado">
+      <span><b id="nCel">0</b> células marcadas</span>
+      <span id="guardado" class="ayuda"></span>
+      <span id="comp" class="ayuda"></span>
+    </div>
+  </main>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+try{const t=localStorage.getItem('tema');if(t)document.documentElement.dataset.theme=t;}catch(e){}
+
+const exp=new URLSearchParams(location.search).get('exp')||'';
+$('nomExp').textContent=exp||'sin experimento';
+$('volver').href='/#exp='+encodeURIComponent(exp);
+$('zip').href='/api/anotar/zip?exp='+encodeURIComponent(exp);
+
+const S={fotos:[],i:-1,img:null,pol:[],cp:null,hist:[],sucio:false,partio:false,
+         herr:'dibujar',esc:1,ox:0,oy:0,trazo:null,arrastre:null,espacio:false};
+const cv=$('cv'),ctx=cv.getContext('2d'),marco=$('marco');
+
+// ---------- datos ----------
+async function api(url,cuerpo){
+  const r=await fetch(url,cuerpo?{method:'POST',body:JSON.stringify(cuerpo)}:{});
+  const d=r.headers.get('content-type')?.includes('json')?await r.json():null;
+  if(!r.ok)throw new Error(d&&d.error||r.statusText);
+  return d;
+}
+function fechaBonita(f){
+  const m=f.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+  const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return m?`${+m[3]} ${meses[+m[2]-1]} ${m[4]}:${m[5]}`:f;
+}
+function dibujarLista(){
+  if(!S.fotos.length){$('fotos').innerHTML='<p class="ayuda">No hay fotos completas en este experimento.</p>';return;}
+  $('fotos').innerHTML=S.fotos.map((x,i)=>`<button class="foto ${i===S.i?'sel':''}" data-i="${i}">
+    <span><b>${esc(x.cam)}</b> · ${esc(fechaBonita(x.fecha))}</span>
+    <span class="${x.marcada?'ok':''}">${x.prueba?'<i class="cero">desde cero</i> ':''}${x.marcada?'✓ '+x.celulas:'sin marcar'}</span></button>`).join('');
+  $('fotos').querySelectorAll('.foto').forEach(b=>b.onclick=()=>abrir(+b.dataset.i));
+}
+function pct(v){return v==null?'—':Math.round(v*100)+'%';}
+function dibujarResumen(r){
+  const g=r&&r.grupos||{};const claves=Object.keys(g).sort((a,b)=>a==='total'?1:b==='total'?-1:a.localeCompare(b));
+  if(!claves.length){$('resumen').innerHTML='<p class="ayuda">Aparece al guardar una foto que ya esté segmentada.</p>';return;}
+  $('resumen').innerHTML=`<table><tr><th></th><th>Fotos</th><th>Sensib.</th><th>Precisión</th></tr>`+
+    claves.map(k=>`<tr><td>${esc(k)}</td><td>${g[k].fotos}</td><td>${pct(g[k].sensibilidad)}</td><td>${pct(g[k].precision)}</td></tr>`).join('')+'</table>';
+}
+async function cargarMuestra(){
+  if(!exp){$('msg').textContent='Abre esta página desde la interfaz, con un experimento elegido.';return;}
+  try{
+    const d=await api('/api/anotar/muestra?exp='+encodeURIComponent(exp));
+    S.fotos=d.fotos;dibujarResumen(d.resumen);dibujarLista();
+    const i=S.fotos.findIndex(x=>!x.marcada);
+    if(S.fotos.length)abrir(i<0?0:i);else $('msg').textContent='No hay fotos completas en este experimento.';
+  }catch(e){$('msg').textContent='No se pudo cargar: '+e.message;}
+}
+function q(x){return `exp=${encodeURIComponent(exp)}&cam=${encodeURIComponent(x.cam)}&fecha=${encodeURIComponent(x.fecha)}`;}
+async function abrir(i){
+  if(i===S.i)return;
+  if(S.sucio&&!confirm('Hay contornos sin guardar en esta foto. ¿Salir sin guardar?'))return;
+  S.i=i;dibujarLista();
+  const x=S.fotos[i];
+  $('msg').textContent='Cargando…';$('msg').classList.remove('oculto');$('comp').textContent='';
+  S.pol=[];S.hist=[];S.cp=null;S.sucio=false;S.partio=false;
+  try{
+    const [d,cp]=await Promise.all([api('/api/anotar/cargar?'+q(x)),api('/api/anotar/cellpose?'+q(x))]);
+    S.pol=d.poligonos||[];S.partio=!!d.partio_de_cellpose;S.cp=cp.poligonos;
+  }catch(e){$('msg').textContent='No se pudo cargar: '+e.message;return;}
+  // las fotos «desde cero» miden a Cellpose: se marcan sin verlo
+  const ciega=!!x.prueba;
+  if(ciega)$('verCp').checked=false;
+  $('partir').disabled=!S.cp||ciega;$('verCp').disabled=!S.cp||ciega;
+  $('partir').title=ciega?'Esta foto se marca desde cero: sirve para medir a Cellpose':'Copia los contornos de Cellpose para corregirlos';
+  await cargarImagen(true);
+}
+async function cargarImagen(ajustar){
+  const x=S.fotos[S.i];if(!x)return;
+  const img=new Image();
+  img.onload=()=>{S.img=img;$('msg').classList.add('oculto');if(ajustar)verCompleta();else pintar();};
+  img.onerror=()=>{$('msg').textContent='No se pudo leer la foto (¿archivo vacío?).';$('msg').classList.remove('oculto');};
+  img.src='/api/anotar/imagen?'+q(x)+'&vista='+$('vista').value;
+}
+
+// ---------- vista ----------
+function tam(){
+  const r=marco.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr);
+  return {w:r.width,h:r.height,dpr};
+}
+function verCompleta(){
+  if(!S.img)return;const {w,h}=tam();
+  S.esc=Math.min(w/S.img.width,h/S.img.height);
+  S.ox=(w-S.img.width*S.esc)/2;S.oy=(h-S.img.height*S.esc)/2;pintar();
+}
+function aImagen(e){const r=marco.getBoundingClientRect();return [(e.clientX-r.left-S.ox)/S.esc,(e.clientY-r.top-S.oy)/S.esc];}
+function camino(p){ctx.beginPath();p.forEach(([x,y],k)=>k?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();}
+function pintar(){
+  const {dpr}=tam();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  if(!S.img)return;
+  ctx.setTransform(dpr*S.esc,0,0,dpr*S.esc,dpr*S.ox,dpr*S.oy);
+  ctx.imageSmoothingEnabled=S.esc<2;ctx.drawImage(S.img,0,0);
+  const lw=1.6/S.esc;
+  if($('verCp').checked&&S.cp){
+    ctx.setLineDash([5/S.esc,4/S.esc]);ctx.strokeStyle='#f6b352';ctx.lineWidth=lw;
+    S.cp.forEach(p=>{camino(p);ctx.stroke();});ctx.setLineDash([]);
+  }
+  S.pol.forEach((p,k)=>{
+    const h=(k*137.5)%360;camino(p);
+    ctx.fillStyle=`hsla(${h},85%,55%,.22)`;ctx.fill();
+    ctx.strokeStyle=`hsl(${h},90%,60%)`;ctx.lineWidth=lw;ctx.stroke();
+  });
+  if(S.trazo&&S.trazo.length>1){
+    ctx.beginPath();S.trazo.forEach(([x,y],k)=>k?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.strokeStyle='#22c55e';ctx.lineWidth=lw*1.3;ctx.stroke();
+  }
+  $('nCel').textContent=S.pol.length;
+  const x=S.fotos[S.i];
+  $('guardado').innerHTML=S.sucio?'<span class="sin">sin guardar</span>':(x&&x.marcada?'guardada':'');
+}
+
+// ---------- edición ----------
+function cambio(){S.hist.push(JSON.stringify(S.pol));if(S.hist.length>100)S.hist.shift();S.sucio=true;}
+function area(p){let a=0;for(let k=0;k<p.length;k++){const [x1,y1]=p[k],[x2,y2]=p[(k+1)%p.length];a+=x1*y2-x2*y1;}return Math.abs(a)/2;}
+function simplificar(p,eps){            // Ramer-Douglas-Peucker
+  if(p.length<3)return p;
+  const [a,b]=[p[0],p[p.length-1]];let dmax=0,idx=0;
+  const L=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  for(let k=1;k<p.length-1;k++){
+    // trazo cerrado (el final cae en el inicio): distancia al punto, no a la recta
+    const d=L<1e-6?Math.hypot(p[k][0]-a[0],p[k][1]-a[1])
+                  :Math.abs((b[0]-a[0])*(a[1]-p[k][1])-(a[0]-p[k][0])*(b[1]-a[1]))/L;
+    if(d>dmax){dmax=d;idx=k;}}
+  if(dmax<=eps)return [a,b];
+  return simplificar(p.slice(0,idx+1),eps).slice(0,-1).concat(simplificar(p.slice(idx),eps));
+}
+function dentro([x,y],p){let c=false;for(let i=0,j=p.length-1;i<p.length;j=i++){const [xi,yi]=p[i],[xj,yj]=p[j];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c;}return c;}
+function borrarEn(pt){
+  for(let k=S.pol.length-1;k>=0;k--)if(dentro(pt,S.pol[k])){cambio();S.pol.splice(k,1);pintar();return;}
+}
+function herramienta(h){
+  S.herr=h;marco.className=h;
+  [['dibujar','hDibujar'],['borrar','hBorrar'],['mover','hMover']].forEach(([n,id])=>$(id).classList.toggle('act',n===h));
+}
+marco.addEventListener('contextmenu',e=>e.preventDefault());
+marco.addEventListener('pointerdown',e=>{
+  if(!S.img)return;try{marco.setPointerCapture(e.pointerId);}catch(_){}
+  if(e.button===1||S.espacio||(e.button===0&&S.herr==='mover')){S.arrastre=[e.clientX,e.clientY,S.ox,S.oy];marco.style.cursor='grabbing';return;}
+  if(e.button===2||(e.button===0&&S.herr==='borrar')){borrarEn(aImagen(e));return;}
+  if(e.button===0&&S.herr==='dibujar'){S.trazo=[aImagen(e)];}
+});
+marco.addEventListener('pointermove',e=>{
+  if(S.arrastre){const [x0,y0,ox,oy]=S.arrastre;S.ox=ox+e.clientX-x0;S.oy=oy+e.clientY-y0;pintar();return;}
+  if(S.trazo){
+    const p=aImagen(e),u=S.trazo[S.trazo.length-1];
+    if(Math.hypot(p[0]-u[0],p[1]-u[1])*S.esc>=2){S.trazo.push(p);pintar();}
+  }
+});
+function soltar(){
+  if(S.arrastre){S.arrastre=null;marco.style.cursor='';return;}
+  if(!S.trazo)return;
+  let p=simplificar(S.trazo,0.6).map(([x,y])=>[Math.round(x*10)/10,Math.round(y*10)/10]);
+  S.trazo=null;
+  if(p.length>=3&&area(p)>=20){cambio();S.pol.push(p);}
+  pintar();
+}
+marco.addEventListener('pointerup',soltar);
+marco.addEventListener('pointercancel',soltar);
+marco.addEventListener('wheel',e=>{
+  if(!S.img)return;e.preventDefault();
+  const r=marco.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const f=Math.exp(-e.deltaY*0.0015),n=Math.min(20,Math.max(0.05,S.esc*f));
+  S.ox=mx-(mx-S.ox)*n/S.esc;S.oy=my-(my-S.oy)*n/S.esc;S.esc=n;pintar();
+},{passive:false});
+window.addEventListener('resize',()=>pintar());
+
+function deshacer(){if(!S.hist.length)return;S.pol=JSON.parse(S.hist.pop());S.sucio=true;pintar();}
+async function guardar(){
+  const x=S.fotos[S.i];if(!x)return;
+  if(!S.pol.length&&!confirm('No marcaste ninguna célula. ¿Guardar esta foto como «sin células»?'))return;
+  $('guardar').disabled=true;
+  try{
+    const d=await api('/api/anotar/guardar',{exp,cam:x.cam,fecha:x.fecha,poligonos:S.pol,partio_de_cellpose:S.partio});
+    S.sucio=false;x.marcada=S.pol.length>0||x.marcada;x.celulas=S.pol.length;
+    dibujarLista();dibujarResumen(d.resumen);
+    const c=d.comparacion;
+    $('comp').textContent=S.partio?'Corregida a partir de Cellpose: sirve para entrenar, no para medir.':c&&c.a_mano?`En esta foto Cellpose encontró ${c.aciertos} de ${c.a_mano} (${pct(c.sensibilidad)}); de sus ${c.cellpose} contornos, ${pct(c.precision)} eran células.`:(c?'':'Esta foto todavía no está segmentada: la comparación aparece cuando lo esté.');
+    pintar();
+  }catch(e){alert('No se pudo guardar: '+e.message);}
+  $('guardar').disabled=false;
+}
+function siguiente(){
+  if(!S.fotos.length)return;
+  const orden=[...S.fotos.keys()].map(k=>(S.i+1+k)%S.fotos.length);
+  const j=orden.find(k=>!S.fotos[k].marcada);abrir(j==null?(S.i+1)%S.fotos.length:j);
+}
+
+$('hDibujar').onclick=()=>herramienta('dibujar');
+$('hBorrar').onclick=()=>herramienta('borrar');
+$('hMover').onclick=()=>herramienta('mover');
+$('vista').onchange=()=>{try{localStorage.setItem('anotarVista',$('vista').value);}catch(e){}cargarImagen(false);};
+try{const v=localStorage.getItem('anotarVista');if(v&&[...$('vista').options].some(o=>o.value===v))$('vista').value=v;}catch(e){}
+$('verCp').onchange=pintar;
+$('partir').onclick=()=>{
+  if(!S.cp)return;
+  if(S.pol.length&&!confirm('Esto reemplaza lo que marcaste en esta foto por los contornos de Cellpose. ¿Seguir?'))return;
+  cambio();S.pol=JSON.parse(JSON.stringify(S.cp));S.partio=true;pintar();
+};
+$('deshacer').onclick=deshacer;
+$('ajustar').onclick=verCompleta;
+$('guardar').onclick=guardar;
+$('sig').onclick=siguiente;
+$('otra').onclick=async()=>{
+  try{const d=await api('/api/anotar/otra',{exp});S.fotos=d.fotos.map(f=>Object.assign({},f));dibujarLista();abrir(S.fotos.length-1);}
+  catch(e){alert('No se pudo: '+e.message);}
+};
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
+  const k=e.key.toLowerCase();
+  if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();deshacer();return;}
+  if((e.ctrlKey||e.metaKey)&&k==='s'){e.preventDefault();guardar();return;}
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  if(e.code==='Space'){e.preventDefault();if(!S.espacio){S.espacio=true;marco.style.cursor='grab';}return;}
+  if(k==='d')herramienta('dibujar');else if(k==='e')herramienta('borrar');else if(k==='m')herramienta('mover');
+  else if(k==='n')siguiente();
+  else if(k==='c'&&!$('verCp').disabled){$('verCp').checked=!$('verCp').checked;pintar();}
+  else if('123'.includes(k)&&k){$('vista').selectedIndex=+k-1;$('vista').onchange();}
+  else if(k==='escape'&&S.trazo){S.trazo=null;pintar();}
+});
+window.addEventListener('keyup',e=>{if(e.code==='Space'){S.espacio=false;marco.style.cursor='';}});
+window.addEventListener('beforeunload',e=>{if(S.sucio){e.preventDefault();e.returnValue='';}});
+cargarMuestra();
+</script>
+</body>
+</html>

@@ -135,13 +135,14 @@
     <div class="fila">
       <label class="campo">Imagen para Cellpose
         <select id="segEntrada">
+          <option value="combinada" selected>Combinada: campo claro + DPC (recomendada)</option>
+          <option value="combinada+dpc">Combinada + DPC (células sueltas, planas u oscuras; el doble de tiempo)</option>
           <option value="suma">Suma de las 4 fotos (≈ campo claro)</option>
           <option value="dpc">Magnitud del DPC</option>
-          <option value="combinada">Combinada (3 canales)</option>
           <option value="fase">Fase cuantitativa (requiere calibración)</option>
         </select></label>
       <label class="campo" style="max-width:120px">Reducir
-        <select id="segReducir"><option value="1">1× (0.22 µm/px)</option><option value="2" selected>2× (0.43 µm/px)</option><option value="3">3×</option><option value="4">4×</option></select></label>
+        <select id="segReducir"><option value="1">1× (0.22 µm/px)</option><option value="2">2× (0.43 µm/px)</option><option value="3" selected>3× (0.65 µm/px, recomendada)</option><option value="4">4×</option></select></label>
     </div>
     <div class="fila"><button class="prim" id="segBtn">Iniciar segmentación</button></div>
     <dl class="datos"><dt>En cola</dt><dd id="segCola">—</dd><dt>Segmentados</dt><dd id="segN">0</dd>
@@ -176,6 +177,7 @@
       <div class="detalle-cab">
         <h3 id="detNombre">—</h3>
         <div class="pestanas" id="camaras"></div>
+        <a id="anotarLink" href="/anotar" target="_blank" class="ayuda" title="Opcional: marcar a mano las células de unas fotos al azar, para medir y mejorar la segmentación">Contornos a mano ↗</a>
       </div>
       <div class="rejilla">
         <div>
@@ -193,7 +195,17 @@
           <h2 style="margin-top:16px">Células por ciclo</h2>
           <div class="grafica" id="grafica"><svg id="svg" role="img" aria-label="Número de células segmentadas en cada ciclo"></svg><div class="tip" id="tip"></div></div>
           <h2 style="margin-top:14px">Trayectorias y estadística</h2>
-          <div class="fila" style="margin-top:0"><button class="prim" id="analBtn">Analizar trayectorias</button><span class="ayuda" id="analEstado"></span></div>
+          <div class="fila" style="margin-top:0">
+            <label class="campo">Células que entran en la estadística
+              <select id="analGrupo">
+                <option value="0">Todas las células</option>
+                <option value="1">Solo sueltas</option>
+                <option value="3">Sueltas y grupos de hasta 3</option>
+                <option value="5">Sueltas y grupos de hasta 5</option>
+              </select></label>
+          </div>
+          <p class="ayuda" id="analGrupoAyuda" style="margin-top:4px">El tracking se hace con todas; con un límite, solo cuentan los tramos en los que la célula está sola o en un grupo chico (los cúmulos y láminas quedan fuera).</p>
+          <div class="fila"><button class="prim" id="analBtn">Analizar trayectorias</button><span class="ayuda" id="analEstado"></span></div>
           <div class="metricas" id="metricas"></div>
         </div>
       </div>
@@ -289,6 +301,7 @@ function elegir(exp,cam){
 function actualizarDetalle(forzar){
   const x=E.experimentos.find(e=>e.nombre===sel.exp);if(!x)return;
   $('detNombre').textContent=sel.exp+(x.meta&&x.meta.nombre?` — ${x.meta.nombre}`:'');
+  $('anotarLink').href='/anotar?exp='+encodeURIComponent(sel.exp);
   $('camaras').innerHTML=Object.keys(x.camaras).map(c=>`<button data-c="${esc(c)}" class="${c===sel.cam?'act':''}">${esc(c)}</button>`).join('');
   $('camaras').querySelectorAll('button').forEach(b=>b.onclick=()=>elegir(sel.exp,b.dataset.c));
   const c=x.camaras[sel.cam]||{};
@@ -302,7 +315,7 @@ function cargarImagen(){
   const img=$('visorImg'),ph=$('visorPh');
   const etq={ultima:'última imagen segmentada',trayectorias:'trayectorias',msd:'MSD del ensamble'}[sel.vista];
   $('visorEtq').textContent=etq;
-  const url=`/api/imagen?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}&tipo=${sel.vista}&t=${Date.now()}`;
+  const url=`/api/imagen?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}&tipo=${sel.vista}&grupo=${grupoSel()}&t=${Date.now()}`;
   const nuevo=new Image();
   nuevo.onload=()=>{img.src=nuevo.src;img.alt=etq;img.classList.remove('oculto');ph.classList.add('oculto');};
   nuevo.onerror=()=>{img.classList.add('oculto');ph.classList.remove('oculto');
@@ -353,8 +366,11 @@ function dibujarSerie(){
 window.addEventListener('resize',dibujarSerie);
 // ---------- análisis ----------
 let sondeoAnal=null;
+const grupoSel=()=>+$('analGrupo').value||0;
 async function cargarAnalisis(){
-  let a;try{a=await api(`/api/analisis?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}`);}catch(e){return;}
+  const g=grupoSel();
+  let a;try{a=await api(`/api/analisis?exp=${encodeURIComponent(sel.exp)}&cam=${encodeURIComponent(sel.cam)}&grupo=${g}`);}catch(e){return;}
+  if(g!==grupoSel())return;   // se cambió la variante mientras llegaba la respuesta
   const btn=$('analBtn');
   btn.disabled=a.estado==='corriendo';
   $('analEstado').textContent={corriendo:`analizando: ${a.paso||''}…`,listo:'análisis listo',error:'error: '+(a.error||''),'sin analizar':'todavía sin analizar'}[a.estado]||'';
@@ -364,23 +380,33 @@ async function cargarAnalisis(){
   if(a.estado==='listo'&&r){
     btn.textContent='Volver a analizar';
     const prw=r.prw||{};
+    // P menor que el intervalo entre fotos no es medible con ese muestreo
+    const pOk=prw.P!=null&&r.intervalo_min!=null&&prw.P>=r.intervalo_min;
     const mets=[[r.trayectorias_analizadas,'trayectorias analizadas',0],[r.rapidez_um_min,'rapidez (µm/min, mediana)',2],
       [r.direccionalidad,'direccionalidad (mediana)',2],[r.alfa_mediana,'α por célula (mediana)',2],
-      [r.ead1_mediana,'EAD₁ corregida (mediana)',3],[prw.P,'persistencia P (min)',1]];
+      [r.ead1_mediana,'EAD₁ corregida (mediana)',3],
+      [pOk?prw.P:null,pOk?'persistencia P (min)':`persistencia: no medible con fotos cada ${fmt(r.intervalo_min,0)} min`,1]];
+    if(r.trayectorias_descartadas_restos!=null)mets.push([r.trayectorias_descartadas_restos,'trayectorias descartadas como basura',0]);
+    if(r.fraccion_detecciones_hasta_3!=null)mets.push([100*r.fraccion_detecciones_hasta_3,'% de detecciones en grupos de hasta 3',1]);
     $('metricas').innerHTML=mets.map(([v,t,d])=>`<div class="met"><b>${fmt(v,d)}</b><span>${t}</span></div>`).join('');
     const cel=a.celulas||[];
     $('tablaCel').innerHTML=cel.length?`<h2 style="margin-top:14px">Células (las 100 trayectorias más largas)</h2><table><thead><tr><th>trayectoria</th><th>duración (min)</th><th>rapidez (µm/min)</th><th>direccionalidad</th><th>α</th><th>EAD₁</th><th>área (µm²)</th></tr></thead><tbody>`+
       cel.map(c=>`<tr><td>${esc(c.track_id)}</td><td>${fmt(+c.duracion_min,0)}</td><td>${fmt(+c.rapidez_um_min)}</td><td>${fmt(+c.direccionalidad)}</td><td>${fmt(+c.alfa)}</td><td>${fmt(+c.ead1_corr,3)}</td><td>${fmt(+c.area_um2,0)}</td></tr>`).join('')+'</tbody></table>':'';
   }else{
-    btn.textContent='Analizar trayectorias';
+    btn.textContent=g?'Analizar estas células':'Analizar trayectorias';
     if(a.estado!=='corriendo'){$('metricas').innerHTML='';$('tablaCel').innerHTML='';}
   }
   if(a.estado==='listo'&&sel.vista!=='ultima')cargarImagen();
 }
 $('analBtn').onclick=async()=>{
-  try{await api('/api/analizar',{exp:sel.exp,cam:sel.cam});}catch(e){alert(e.message);return;}
+  try{await api('/api/analizar',{exp:sel.exp,cam:sel.cam,max_grupo:grupoSel()});}catch(e){alert(e.message);return;}
   cargarAnalisis();
 };
+$('analGrupo').addEventListener('change',()=>{
+  try{localStorage.setItem('analGrupo',$('analGrupo').value);}catch(e){}
+  if(sel.exp){$('metricas').innerHTML='';$('tablaCel').innerHTML='';cargarAnalisis();if(sel.vista!=='ultima')cargarImagen();}
+});
+try{const v=localStorage.getItem('analGrupo');if(v&&[...$('analGrupo').options].some(o=>o.value===v))$('analGrupo').value=v;}catch(e){}
 // ---------- botones de las etapas ----------
 $('recBtn').onclick=async()=>{
   const act=E&&E.receptor.activo;
@@ -431,8 +457,8 @@ $('impBtn').onclick=async()=>{
 };
 // La página recuerda la última entrada y reducción elegidas (solo en este navegador).
 ['segEntrada','segReducir'].forEach(id=>{
-  try{const v=localStorage.getItem(id);if(v&&[...$(id).options].some(o=>o.value===v))$(id).value=v;}catch(e){}
-  $(id).addEventListener('change',()=>{try{localStorage.setItem(id,$(id).value);}catch(e){}});
+  try{const v=localStorage.getItem(id+'_v2');if(v&&[...$(id).options].some(o=>o.value===v))$(id).value=v;}catch(e){}
+  $(id).addEventListener('change',()=>{try{localStorage.setItem(id+'_v2',$(id).value);}catch(e){}});
 });
 $('carpeta').oninput=()=>{carpetaEditada=true;};
 $('carpetaBtn').onclick=async()=>{

@@ -38,6 +38,7 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.config import ROOT, cache_dir  # noqa: E402
 from lib import en_vivo as EV  # noqa: E402
+from lib import anotar as ANOT  # noqa: E402
 from lib import importar as IMP  # noqa: E402
 from lib.receptor import (Receptor, cargar_o_crear_codigo, codigo_nuevo,  # noqa: E402
                           guardar_codigo, ips_locales)
@@ -45,6 +46,7 @@ from lib.receptor import (Receptor, cargar_o_crear_codigo, codigo_nuevo,  # noqa
 ESTATICOS = Path(__file__).resolve().parent / "interfaz"
 RE_NOMBRE = re.compile(r"^[A-Za-z0-9_\-]{1,80}$")
 RE_CAM = re.compile(r"^cam\d$")
+RE_FECHA = re.compile(r"^\d{8}_\d{6}$")
 IMAGENES = {"ultima": ("masks", "ultima.png"), "trayectorias": ("analisis", "trayectorias.png"),
             "msd": ("analisis", "msd.png")}
 
@@ -88,8 +90,11 @@ class Estado:
         self.token = cargar_o_crear_codigo(self.ruta_codigo)
         self.log = deque(maxlen=300)
         self.lock = threading.Lock()
-        self.seg = {"estado": "detenido", "entrada": "suma", "reducir": 2,
-                    "flow_threshold": 0.4, "cellprob_threshold": 0.0,
+        # Por defecto lo que mejor segmentó las fotos DPC de prueba 7
+        # (2026-10-05): combinada con el campo claro aplanado, reducir 3 y
+        # flow_threshold 0.8 con filtro de forma (lib/en_vivo.py).
+        self.seg = {"estado": "detenido", "entrada": "combinada", "reducir": 3,
+                    "flow_threshold": 0.8, "cellprob_threshold": 0.0,
                     "hechos": 0, "segundos": 0.0, "cola": 0, "ultimo": None, "error": None}
         self._seg_activo = threading.Event()
         self._modelo = None
@@ -155,8 +160,9 @@ class Estado:
             self.anotar("segmentación detenida")
 
     # ---------- análisis (tracking + estadística) ----------
-    def analizar(self, exp, cam):
-        clave = (exp, cam)
+    def analizar(self, exp, cam, max_grupo=None):
+        # con max_grupo: solo células sueltas o en grupos chicos, en <cam>/hasta_<N>/
+        clave = (exp, cam) if not max_grupo else (exp, cam, max_grupo)
         t = self.trabajos.get(clave)
         if t and t["estado"] == "corriendo":
             return
@@ -167,10 +173,12 @@ class Estado:
             try:
                 def paso(p):
                     self.trabajos[clave]["paso"] = p
-                r = propio.analizar(self.masks, exp, cam, self.analisis / exp / cam,
-                                    entrada_dir=self.entrada_dir, progreso=paso)
+                destino = self.carpeta_analisis(exp, cam, max_grupo)
+                r = propio.analizar(self.masks, exp, cam, destino, entrada_dir=self.entrada_dir,
+                                    progreso=paso, max_grupo=max_grupo)
                 self.trabajos[clave] = {"estado": "listo", "resumen": r, "t": time.time()}
-                self.anotar(f"análisis {exp}/{cam}: {r['trayectorias_analizadas']} trayectorias")
+                self.anotar(f"análisis {exp}/{cam}{f' (grupos ≤ {max_grupo})' if max_grupo else ''}: "
+                            f"{r['trayectorias_analizadas']} trayectorias")
             except Exception as e:
                 self.trabajos[clave] = {"estado": "error", "error": str(e), "t": time.time()}
                 self.anotar(f"análisis {exp}/{cam}: error ({e})")
@@ -178,11 +186,15 @@ class Estado:
 
         threading.Thread(target=trabajar, daemon=True).start()
 
-    def resumen_analisis(self, exp, cam):
-        t = self.trabajos.get((exp, cam))
+    def carpeta_analisis(self, exp, cam, max_grupo=None):
+        d = self.analisis / exp / cam
+        return d / f"hasta_{max_grupo}" if max_grupo else d
+
+    def resumen_analisis(self, exp, cam, max_grupo=None):
+        t = self.trabajos.get((exp, cam) if not max_grupo else (exp, cam, max_grupo))
         if t:
             return t
-        r = self.analisis / exp / cam / "resumen.json"
+        r = self.carpeta_analisis(exp, cam, max_grupo) / "resumen.json"
         if r.exists():
             return {"estado": "listo", "resumen": json.loads(r.read_text(encoding="utf-8")), "t": r.stat().st_mtime}
         return {"estado": "sin analizar"}
@@ -245,17 +257,66 @@ def crear_manejador(est):
             self.end_headers()
             self.wfile.write(cuerpo)
 
+        def _grupo(self, q):
+            """Variante del análisis: 0/ausente = todas las células; N = grupos de hasta N."""
+            try:
+                g = int(q.get("grupo", ["0"])[0] or 0)
+            except ValueError:
+                return None
+            return g if 0 < g <= 50 else None
+
         def _exp_cam(self, q):
             exp, cam = q.get("exp", [""])[0], q.get("cam", [""])[0]
             if RE_NOMBRE.match(exp) and RE_CAM.match(cam):
                 return exp, cam
             return None, None
 
+        def _foto(self, q):
+            exp, cam = self._exp_cam(q)
+            fecha = q.get("fecha", [""])[0]
+            return (exp, cam, fecha) if exp and RE_FECHA.match(fecha) else (None, None, None)
+
+        def _anotar_get(self, que, q):
+            exp = q.get("exp", [""])[0]
+            if not RE_NOMBRE.match(exp):
+                return self._enviar(400, {"error": "experimento inválido"})
+            if que == "muestra":
+                return self._enviar(200, {"fotos": ANOT.muestra(est.entrada_dir, exp),
+                                          "resumen": ANOT.resumen(est.masks, exp)})
+            if que == "zip":
+                datos = ANOT.zip_marcas(exp)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="marcas_{exp}.zip"')
+                self.send_header("Content-Length", str(len(datos)))
+                self.end_headers()
+                self.wfile.write(datos)
+                return
+            exp, cam, fecha = self._foto(q)
+            if not exp:
+                return self._enviar(400, {"error": "parámetros inválidos"})
+            try:
+                if que == "imagen":
+                    vista = q.get("vista", ["campo"])[0]
+                    vista = vista if vista in ANOT.VISTAS else "campo"
+                    return self._enviar(200, ANOT.imagen(est.entrada_dir, exp, cam, fecha, vista), "image/png")
+                if que == "cellpose":
+                    return self._enviar(200, {"poligonos": ANOT.de_cellpose(est.masks, exp, cam, fecha)})
+                if que == "cargar":
+                    return self._enviar(200, ANOT.cargar(exp, cam, fecha) or {"poligonos": []})
+            except (FileNotFoundError, OSError, ValueError) as e:
+                return self._enviar(404, {"error": str(e)})
+            return self._enviar(404, {"error": "no encontrado"})
+
         def do_GET(self):
             url = urlparse(self.path)
             q = parse_qs(url.query)
             if url.path in ("/", "/index.html"):
                 return self._enviar(200, (ESTATICOS / "index.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path == "/anotar":
+                return self._enviar(200, (ESTATICOS / "anotar.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path.startswith("/api/anotar/"):
+                return self._anotar_get(url.path.rsplit("/", 1)[1], q)
             if url.path == "/api/estado":
                 return self._enviar(200, est.estado())
             if url.path == "/api/imagen":
@@ -264,8 +325,10 @@ def crear_manejador(est):
                 if not exp or tipo not in IMAGENES:
                     return self._enviar(400, {"error": "parámetros inválidos"})
                 base, nombre = IMAGENES[tipo]
-                raiz = est.masks if base == "masks" else est.analisis
-                ruta = raiz / exp / cam / nombre
+                if base == "masks":
+                    ruta = est.masks / exp / cam / nombre
+                else:
+                    ruta = est.carpeta_analisis(exp, cam, self._grupo(q)) / nombre
                 if not ruta.is_file():
                     return self._enviar(404, {"error": "todavía no hay imagen"})
                 return self._enviar(200, ruta.read_bytes(), "image/png")
@@ -286,8 +349,9 @@ def crear_manejador(est):
                 exp, cam = self._exp_cam(q)
                 if not exp:
                     return self._enviar(400, {"error": "parámetros inválidos"})
-                a = dict(est.resumen_analisis(exp, cam))
-                pc = est.analisis / exp / cam / "por_celula.csv"
+                g = self._grupo(q)
+                a = dict(est.resumen_analisis(exp, cam, g))
+                pc = est.carpeta_analisis(exp, cam, g) / "por_celula.csv"
                 if a.get("estado") == "listo" and pc.exists():
                     with open(pc, encoding="utf-8") as f:
                         filas = list(csv.DictReader(f))
@@ -345,8 +409,30 @@ def crear_manejador(est):
                 exp, cam = datos.get("exp", ""), datos.get("cam", "")
                 if not (RE_NOMBRE.match(exp) and RE_CAM.match(cam)):
                     return self._enviar(400, {"error": "parámetros inválidos"})
-                est.analizar(exp, cam)
+                try:
+                    max_grupo = int(datos.get("max_grupo") or 0) or None
+                except (TypeError, ValueError):
+                    return self._enviar(400, {"error": "max_grupo inválido"})
+                est.analizar(exp, cam, max_grupo)
                 return self._enviar(200, {"estado": "corriendo"})
+            if ruta == "/api/anotar/guardar":
+                q = {k: [str(datos.get(k, ""))] for k in ("exp", "cam", "fecha")}
+                exp, cam, fecha = self._foto(q)
+                pol = datos.get("poligonos")
+                if not exp or not isinstance(pol, list):
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                try:
+                    c = ANOT.guardar(est.entrada_dir, est.masks, exp, cam, fecha, pol,
+                                     bool(datos.get("partio_de_cellpose")))
+                except (FileNotFoundError, OSError, ValueError) as e:
+                    return self._enviar(400, {"error": str(e)})
+                est.anotar(f"contornos a mano: {exp}/{cam}/{fecha} ({len(pol)} células)")
+                return self._enviar(200, {"comparacion": c, "resumen": ANOT.resumen(est.masks, exp)})
+            if ruta == "/api/anotar/otra":
+                exp = str(datos.get("exp", ""))
+                if not RE_NOMBRE.match(exp):
+                    return self._enviar(400, {"error": "experimento inválido"})
+                return self._enviar(200, {"fotos": ANOT.muestra(est.entrada_dir, exp, otra=True)})
             if ruta == "/api/importar":
                 try:
                     r = IMP.importar(str(datos.get("ruta", "")), est.entrada_dir,
@@ -355,6 +441,13 @@ def crear_manejador(est):
                     return self._enviar(400, {"error": str(e)})
                 est.anotar(f"fotos de {datos.get('ruta')}: {r['ciclos']} ciclos "
                            f"({r['nuevos']} archivos nuevos) en {r['experimento']}")
+                # paquete para marcar a mano (38_paquete_anotar.py): trae las
+                # máscaras de Cellpose y la lista de fotos
+                n = ANOT.instalar_paquete(Path(str(datos.get("ruta", ""))).expanduser(),
+                                          r["experimento"], est.masks)
+                if n:
+                    est.anotar(f"paquete para marcar a mano: {n} máscaras de Cellpose; "
+                               f"abrir «Contornos a mano» en {r['experimento']}")
                 return self._enviar(200, r)
             if ruta == "/api/elegir_carpeta":
                 # Abre una ventana en ESTA PC: solo si la página se usa desde aquí.

@@ -19,12 +19,20 @@ mismas entradas funcionan con esos archivos.
 Qué imagen recibe Cellpose (--entrada). Todavía NO está decidido cuál
 segmenta mejor las imágenes DPC; se decide en el piloto comparando contra
 contornos dibujados a mano. Opciones:
-  suma       (L+R+T+B)/4: equivale a campo claro. Por defecto, porque es la
-             modalidad en la que el pipeline está validado.
+  suma       (L+R+T+B)/4: equivale a campo claro, la modalidad en la que el
+             pipeline está validado con datos públicos.
   dpc        magnitud del DPC de los dos ejes, sqrt(DPC_LR² + DPC_TB²):
              resalta bordes en todas las direcciones.
-  combinada  tres canales [suma, DPC_LR, DPC_TB]; Cellpose-SAM acepta
-             varios canales.
+  combinada  tres canales [suma aplanada, DPC_LR, DPC_TB]; Cellpose-SAM
+             acepta varios canales. Por defecto: con las fotos DPC de prueba 7
+             (2026-10-05) fue la que más células encontró, con --reducir 3 y
+             --flow-threshold 0.8 más el filtro de forma (sin contornos a
+             mano todavía: comparado contra la zona con textura del DPC y
+             revisado a ojo).
+  combinada+dpc  Cellpose con la combinada y con la magnitud del DPC; se
+             juntan las dos y solo se quitan los objetos diminutos. Para
+             células sueltas, planas u oscuras (prueba 11, MG63 con
+             etopósido, con --cellprob-threshold -1). Tarda el doble.
 
 Salidas, reanudables (si se corta, al relanzarlo sigue donde quedó):
   ~/microscopio_cache/masks/propio/<experimento>/cam<N>/<fecha>.npz
@@ -53,12 +61,12 @@ def main():
                     help="Carpeta que llena 31_receptor_microscopio.py")
     ap.add_argument("--salida-dir", type=Path, default=None,
                     help="Dónde guardar las máscaras (por defecto ~/microscopio_cache/masks/propio)")
-    ap.add_argument("--entrada", choices=EV.ENTRADAS, default="suma",
+    ap.add_argument("--entrada", choices=EV.ENTRADAS, default="combinada",
                     help="Qué imagen recibe Cellpose (ver encabezado)")
-    ap.add_argument("--reducir", type=int, default=2,
-                    help="Reducción de resolución (2: 0.43 µm/px, sigue por debajo de la "
-                         "resolución óptica del 20x y es ~4× más rápido)")
-    ap.add_argument("--flow-threshold", type=float, default=0.4)
+    ap.add_argument("--reducir", type=int, default=3,
+                    help="Reducción de resolución (3: 0.65 µm/px; deja las células del "
+                         "tamaño que mejor separa Cellpose-SAM)")
+    ap.add_argument("--flow-threshold", type=float, default=0.8)
     ap.add_argument("--cellprob-threshold", type=float, default=0.0)
     ap.add_argument("--guardar-flows", action="store_true",
                     help="Guardar flows para reajustar umbrales sin volver a correr la red")
