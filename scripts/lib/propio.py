@@ -12,7 +12,19 @@ El tiempo se toma de la fecha de cada ciclo (img_<AAAAMMDD_HHMMSS> o, con
 los nombres de MicroscopeOS desde el 2026-10-02, 0001_<AAAA-MM-DD_HH-MM-SS>),
 no se supone: si un ciclo falta, queda un hueco en vez de juntar dos tiempos.
 
-Salida en ~/microscopio_cache/analisis/propio/<experimento>/<cam>/:
+Cúmulos: cada detección lleva `grupo`, cuántas células tiene el cúmulo en
+el que está (1 = suelta). Se cuentan juntas las células que se tocan y
+también la zona con células que se ve en el DPC aunque Cellpose no la haya
+separado (una lámina sin segmentar no deja "suelta" a la célula de su
+borde); el tamaño es el mayor entre las máscaras que caen en el cúmulo y
+su área dividida por el área típica de una célula. Con `max_grupo` el
+tracking se hace igual con todas las células (para no enlazar mal cuando
+una entra o sale de un cúmulo) y la estadística usa solo los tramos de
+cada trayectoria en los que la célula está en un grupo de hasta
+`max_grupo` células.
+
+Salida en ~/microscopio_cache/analisis/propio/<experimento>/<cam>/ (o en
+<cam>/hasta_<N>/ con max_grupo):
   tracks.csv, por_celula.csv, resumen.json, trayectorias.png, msd.png
 """
 import json
@@ -29,7 +41,88 @@ from .importar import fecha_de
 PROPS = ("label", "centroid", "area", "bbox", "eccentricity", "solidity",
          "major_axis_length", "minor_axis_length", "perimeter")
 AREA_MIN_UM2 = 50.0
+# Restos: trayectorias cuya área mediana es menor que esto no son células
+# (polvo y basura del medio: manchas compactas y casi inmóviles de 80–150 µm²
+# en prueba 7). La mediana de toda la trayectoria, no cada detección, para
+# no perder células que se redondean un rato al dividirse.
+AREA_MIN_CELULA_UM2 = 150.0
 MIN_PUNTOS = 6              # trayectorias más cortas no entran en la estadística
+# Zona con células en el DPC: textura (magnitud suavizada) sobre el fondo
+ZONA_SIGMA_UM = 2.5
+ZONA_MADS = 4
+ZONA_AREA_MIN_UM2 = 80
+CONTACTO_UM = 1.5           # dos máscaras a menos de esto se tocan
+
+
+def zona_celulas(lr, tb, um):
+    """Máscara de las zonas con células según la textura del DPC."""
+    from scipy import ndimage as ndi
+    from skimage import morphology
+    t = ndi.gaussian_filter(np.hypot(lr, tb), ZONA_SIGMA_UM / um)
+    med = np.median(t)
+    mad = np.median(np.abs(t - med)) * 1.4826
+    z = t > med + ZONA_MADS * mad
+    z = ndi.binary_closing(z, morphology.disk(max(1, int(round(2 / um)))))
+    z = ndi.binary_fill_holes(z)
+    return morphology.remove_small_objects(z, max_size=int(ZONA_AREA_MIN_UM2 / um ** 2))
+
+
+def grupos_ciclo(masks, um, area_celula_um2, zona=None):
+    """{label: tamaño del cúmulo en células} de un ciclo."""
+    from scipy import ndimage as ndi
+    union = ndi.binary_dilation(masks > 0, iterations=max(1, int(round(CONTACTO_UM / um))))
+    if zona is not None:
+        union |= zona
+    comp, nc = ndi.label(union)
+    lab, cc = masks.ravel(), comp.ravel()
+    sel = lab > 0
+    pares = np.unique(np.stack([cc[sel], lab[sel]]), axis=1)
+    n_masks = np.bincount(pares[0], minlength=nc + 1)
+    area = np.bincount(cc, minlength=nc + 1) * um ** 2
+    tam = np.maximum(n_masks, np.round(area / area_celula_um2))
+    salida = {}
+    for c, l in pares.T:
+        salida[int(l)] = max(salida.get(int(l), 0), int(tam[c]))
+    return salida
+
+
+def grupos_experimento(filas, exp, cam, entrada_dir, area_celula_um2, progreso=None):
+    """DataFrame (fecha, label, grupo) de todos los ciclos. Si están los DPC
+    de la Pi (_dpcLR/_dpcTB) se usa también la zona con células."""
+    from . import en_vivo as EV
+    fotos = {}
+    if entrada_dir is not None:
+        fotos = {f: fo for e, c, f, fo, su, ok in EV.ciclos(entrada_dir) if e == exp and c == cam}
+    partes = []
+    for i, (fecha, _, ruta) in enumerate(filas):
+        z = np.load(ruta)
+        m = z["masks"]
+        um = float(z["um_por_px"])
+        red = int(z["reducir"]) if "reducir" in z.files else 1
+        zona = None
+        fo = fotos.get(fecha, {})
+        if "_dpcLR" in fo and "_dpcTB" in fo:
+            lr, tb = EV.leer(fo["_dpcLR"], red), EV.leer(fo["_dpcTB"], red)
+            if lr.shape == m.shape:
+                zona = zona_celulas(lr, tb, um)
+        g = grupos_ciclo(m, um, area_celula_um2, zona)
+        partes.append(pd.DataFrame({"fecha": fecha, "label": list(g), "grupo": list(g.values())}))
+        if progreso and i % 50 == 0:
+            progreso(f"midiendo cúmulos ({i}/{len(filas)})")
+    return pd.concat(partes, ignore_index=True)
+
+
+def tramos(tr, max_grupo):
+    """Corta cada trayectoria en los tramos seguidos en los que la célula
+    está en un grupo de hasta max_grupo; cada tramo es una trayectoria nueva
+    (track_id original × 1000 + número de tramo, columna track_original)."""
+    tr = tr.sort_values(["track_id", "frame"]).copy()
+    ok = tr["grupo"] <= max_grupo
+    corte = (ok != ok.groupby(tr["track_id"]).shift()).astype(int)
+    n = corte.groupby(tr["track_id"]).cumsum()
+    tr["track_original"] = tr["track_id"]
+    tr["track_id"] = tr["track_id"] * 1000 + n
+    return tr[ok]
 
 
 def serie(salida, exp, cam):
@@ -71,8 +164,9 @@ def detecciones(filas, area_min_um2=AREA_MIN_UM2):
     return det, um, dt_s, m.shape
 
 
-def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None):
-    """Tracking + estadística de una cámara de un experimento."""
+def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None, max_grupo=None):
+    """Tracking + estadística de una cámara de un experimento. Con max_grupo
+    la estadística usa solo células sueltas o en grupos de hasta ese tamaño."""
     from .tracking import trackear
     aviso = progreso or (lambda *_: None)
     filas = serie(salida, exp, cam)
@@ -92,6 +186,17 @@ def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None):
     tr["tree_id"] -= 1_000_000
     tr["x_um"], tr["y_um"] = tr["x"] * um, tr["y"] * um
     tr["area_um2"] = tr["area"] * um ** 2
+    aviso("midiendo cúmulos")
+    grupos = grupos_experimento(filas, exp, cam, entrada_dir, float(det["area"].median()) * um ** 2, aviso)
+    tr = tr.merge(grupos, on=["fecha", "label"], how="left")
+    tr["grupo"] = tr["grupo"].fillna(1).astype(int)
+    area_med = tr.groupby("track_id")["area_um2"].transform("median")
+    restos = int(tr.loc[area_med < AREA_MIN_CELULA_UM2, "track_id"].nunique())
+    tr = tr[area_med >= AREA_MIN_CELULA_UM2]
+    if max_grupo:
+        tr = tramos(tr, max_grupo)
+        if tr.empty:
+            raise ValueError(f"ninguna célula estuvo en grupos de hasta {max_grupo}")
     destino = Path(destino)
     destino.mkdir(parents=True, exist_ok=True)
     tr.to_csv(destino / "tracks.csv", index=False)
@@ -128,7 +233,11 @@ def analizar(salida, exp, cam, destino, entrada_dir=None, progreso=None):
                "intervalo_min": round(dt_min, 2), "um_por_px": um,
                "detecciones": int(len(det)), "trayectorias": int(tr["track_id"].nunique()),
                "trayectorias_analizadas": int(len(pc)),
-               "celulas_por_ciclo": round(len(det) / len(filas), 1)}
+               "celulas_por_ciclo": round(len(det) / len(filas), 1),
+               "max_grupo": max_grupo,
+               "trayectorias_descartadas_restos": restos,
+               "fraccion_detecciones_sueltas": round(float((grupos["grupo"] == 1).mean()), 3),
+               "fraccion_detecciones_hasta_3": round(float((grupos["grupo"] <= 3).mean()), 3)}
     if len(pc):
         resumen.update({
             "rapidez_um_min": float(pc["rapidez_um_min"].median()),
