@@ -120,3 +120,11 @@ En Windows, donde esta guía dice `venv/bin/python` se usa
 Los mismos pasos existen como scripts: `31_receptor_microscopio.py`,
 `32_segmentar_en_vivo.py`; el análisis se puede llamar desde Python con
 `lib.propio.analizar(...)`.
+
+**Forma de las células (LOCO-EFA).** Después de *Analizar trayectorias*,
+`scripts/39_formas_loco_efa.py <experimento>` mide la forma de cada célula
+(Shape Complexity, entropía y diferencia acumulada) en cada ciclo y la une al
+`track_id`: deja `formas.csv`, `formas_por_celula.csv` y las figuras en la
+carpeta del análisis. Primero conviene correr
+`scripts/39_formas_loco_efa.py --probar` (pruebas con formas sintéticas).
+Es cálculo de CPU, no usa la GPU.
