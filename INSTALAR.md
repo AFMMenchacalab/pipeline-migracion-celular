@@ -16,6 +16,9 @@ versión correcta de PyTorch.
   El instalador usa CUDA 13.0 si el driver lo soporta (≥ 580) y, si no,
   CUDA 12.6. Las dos funcionan con la RTX 3070.
 - ~6 GB libres (PyTorch con CUDA ~3 GB, modelo Cellpose-SAM ~1.2 GB).
+- **ffmpeg** (opcional): solo para los videos de los reportes
+  (`35_reporte_experimento.py`, `37_reporte_propio.py`). Segmentar y hacer el
+  tracking no lo necesitan. En Windows: `winget install Gyan.FFmpeg`.
 
 ## Pasos
 
@@ -87,7 +90,8 @@ hacer en una PC sin GPU: no corre Cellpose.
 
 1. En la PC donde se segmentó el experimento se arma un paquete con solo
    las fotos a marcar (~330 MB):
-   `venv/bin/python scripts/38_paquete_anotar.py <experimento> --salida <carpeta>`.
+   `venv/bin/python scripts/38_paquete_anotar.py <experimento> --salida <carpeta>`
+   (en Windows: `venv\Scripts\python.exe scripts\38_paquete_anotar.py ...`).
 2. Se copia esa carpeta a esta PC (memoria USB, Drive…) sin cambiarle el
    nombre.
 3. En la interfaz: **Agregar fotos de una carpeta** → elegir la carpeta del
@@ -109,6 +113,9 @@ hacer en una PC sin GPU: no corre Cellpose.
 | Resultados del análisis | `~/microscopio_cache/analisis/propio/<experimento>/cam<N>/` (`tracks.csv`, `por_celula.csv`, `resumen.json`, figuras) |
 
 ## Sin interfaz (consola)
+
+En Windows, donde esta guía dice `venv/bin/python` se usa
+`venv\Scripts\python.exe`.
 
 Los mismos pasos existen como scripts: `31_receptor_microscopio.py`,
 `32_segmentar_en_vivo.py`; el análisis se puede llamar desde Python con
