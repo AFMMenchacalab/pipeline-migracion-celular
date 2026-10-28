@@ -1,0 +1,503 @@
+"""
+Interfaz gráfica del pipeline para el microscopio propio (corre en la PC).
+
+Junta en un solo programa, con una página web local:
+  1. Recepción de las imágenes que manda la Raspberry Pi (lib/receptor.py),
+     o fotos de una carpeta cualquiera (tomadas a mano, de una memoria USB;
+     lib/importar.py).
+  2. Segmentación en vivo con Cellpose-SAM, ciclo por ciclo (lib/en_vivo.py),
+     con la última imagen segmentada a la vista.
+  3. Tracking y estadística de cada experimento (lib/propio.py): trayectorias
+     sobre la imagen, MSD, rapidez, direccionalidad, α y entropía.
+
+Por qué una página web local y no una ventana de escritorio: funciona igual
+en Linux y en Windows sin instalar nada gráfico (solo el navegador), se
+puede mirar desde otra computadora de la red con --publico, y usa la misma
+biblioteca estándar de Python que el receptor.
+
+Uso:
+  venv/bin/python scripts/33_interfaz.py            # abre http://127.0.0.1:8770
+  venv/bin/python scripts/33_interfaz.py --publico  # visible en la red local
+"""
+import argparse
+import csv
+import json
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import traceback
+import webbrowser
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.config import ROOT, cache_dir  # noqa: E402
+from lib import en_vivo as EV  # noqa: E402
+from lib import anotar as ANOT  # noqa: E402
+from lib import importar as IMP  # noqa: E402
+from lib.receptor import (Receptor, cargar_o_crear_codigo, codigo_nuevo,  # noqa: E402
+                          guardar_codigo, ips_locales)
+
+ESTATICOS = Path(__file__).resolve().parent / "interfaz"
+RE_NOMBRE = re.compile(r"^[A-Za-z0-9_\-]{1,80}$")
+RE_CAM = re.compile(r"^cam\d$")
+RE_FECHA = re.compile(r"^\d{8}_\d{6}$")
+IMAGENES = {"ultima": ("masks", "ultima.png"), "trayectorias": ("analisis", "trayectorias.png"),
+            "msd": ("analisis", "msd.png")}
+
+
+def elegir_carpeta(inicial=None):
+    """Abre el selector de carpetas del sistema en esta PC y devuelve la
+    ruta elegida ("" si se cancela). En un proceso aparte: el servidor no
+    tiene ventana propia. zenity en Linux; si no está, el de tkinter (que
+    trae Python también en Windows)."""
+    inicial = str(Path(inicial or Path.home()).expanduser())
+    if shutil.which("zenity"):
+        cmd = ["zenity", "--file-selection", "--directory",
+               "--title=Carpeta con las fotos", f"--filename={inicial.rstrip('/')}/"]
+    else:
+        cmd = [sys.executable, "-c",
+               "import sys, tkinter as tk; from tkinter import filedialog as fd; "
+               "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True); "
+               "print(fd.askdirectory(title='Carpeta con las fotos', initialdir=sys.argv[1]) or '')",
+               inicial]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    return r.stdout.strip()
+
+
+class Estado:
+    """Todo lo que corre en segundo plano y lo que la página consulta."""
+
+    def __init__(self, entrada_dir, salida_dir=None):
+        self.entrada_dir = Path(entrada_dir)
+        if salida_dir:
+            self.masks = Path(salida_dir) / "masks"
+            self.analisis = Path(salida_dir) / "analisis"
+            self.masks.mkdir(parents=True, exist_ok=True)
+            self.analisis.mkdir(parents=True, exist_ok=True)
+        else:
+            self.masks = cache_dir("masks", "propio")
+            self.analisis = cache_dir("analisis", "propio")
+        self.receptor = Receptor()
+        # código de emparejamiento: se genera una vez y se guarda, así la Pi
+        # no tiene que volver a escribirlo cada vez que se reinicia la PC
+        self.ruta_codigo = cache_dir() / "receptor.json"
+        self.token = cargar_o_crear_codigo(self.ruta_codigo)
+        self.log = deque(maxlen=300)
+        self.lock = threading.Lock()
+        # Por defecto lo que mejor segmentó las fotos DPC de prueba 7
+        # (2026-10-05): combinada con el campo claro aplanado, reducir 3 y
+        # flow_threshold 0.8 con filtro de forma (lib/en_vivo.py).
+        self.seg = {"estado": "detenido", "entrada": "combinada", "reducir": 3,
+                    "flow_threshold": 0.8, "cellprob_threshold": 0.0,
+                    "hechos": 0, "segundos": 0.0, "cola": 0, "ultimo": None, "error": None}
+        self._seg_activo = threading.Event()
+        self._modelo = None
+        self.trabajos = {}              # (exp, cam) -> estado del análisis
+        self.disp = EV.dispositivo()
+
+    def anotar(self, texto):
+        linea = f"{time.strftime('%H:%M:%S')}  {texto}"
+        print(linea, flush=True)
+        self.log.append(linea)
+
+    # ---------- segmentación ----------
+    def iniciar_segmentacion(self, opciones):
+        with self.lock:
+            if self.seg["estado"] in ("cargando", "activo"):
+                return
+            for k in ("entrada", "reducir", "flow_threshold", "cellprob_threshold"):
+                if k in opciones:
+                    self.seg[k] = opciones[k]
+            self.seg["estado"] = "cargando"
+            self.seg["error"] = None
+            self._seg_activo.set()
+        threading.Thread(target=self._bucle_segmentacion, daemon=True).start()
+
+    def detener_segmentacion(self):
+        self._seg_activo.clear()
+
+    def _bucle_segmentacion(self):
+        try:
+            if self._modelo is None:
+                self.anotar(f"cargando Cellpose-SAM ({self.disp['backend']} {self.disp['nombre']})…")
+                self._modelo = EV.cargar_modelo()
+            self.seg["estado"] = "activo"
+            self.anotar(f"segmentación activa: entrada={self.seg['entrada']}, reducir={self.seg['reducir']}")
+            while self._seg_activo.is_set():
+                pend = EV.pendientes(self.entrada_dir, self.masks)
+                self.seg["cola"] = len(pend)
+                for exp, cam, fecha, fotos, sufijos, destino in pend:
+                    if not self._seg_activo.is_set():
+                        break
+                    try:
+                        n, dt = EV.segmentar_ciclo(
+                            self._modelo, exp, cam, fecha, fotos, sufijos, destino,
+                            entrada=self.seg["entrada"], reducir=int(self.seg["reducir"]),
+                            flow_threshold=float(self.seg["flow_threshold"]),
+                            cellprob_threshold=float(self.seg["cellprob_threshold"]))
+                    except Exception as e:
+                        self.anotar(f"error en {exp}/{cam}/{fecha}: {e}")
+                        continue
+                    self.seg["hechos"] += 1
+                    self.seg["segundos"] += dt
+                    self.seg["cola"] = max(0, self.seg["cola"] - 1)
+                    self.seg["ultimo"] = {"exp": exp, "cam": cam, "fecha": fecha, "celulas": n,
+                                          "segundos": round(dt, 2), "t": time.time()}
+                    self.anotar(f"{exp}/{cam}/{fecha}: {n} células en {dt:.1f} s")
+                time.sleep(2)
+        except Exception as e:
+            self.seg["error"] = str(e)
+            self.anotar(f"la segmentación se detuvo por un error: {e}")
+            traceback.print_exc()
+        finally:
+            self.seg["estado"] = "detenido"
+            self.anotar("segmentación detenida")
+
+    # ---------- análisis (tracking + estadística) ----------
+    def analizar(self, exp, cam, max_grupo=None):
+        # con max_grupo: solo células sueltas o en grupos chicos, en <cam>/hasta_<N>/
+        clave = (exp, cam) if not max_grupo else (exp, cam, max_grupo)
+        t = self.trabajos.get(clave)
+        if t and t["estado"] == "corriendo":
+            return
+        self.trabajos[clave] = {"estado": "corriendo", "paso": "iniciando", "t": time.time()}
+
+        def trabajar():
+            from lib import propio
+            try:
+                def paso(p):
+                    self.trabajos[clave]["paso"] = p
+                destino = self.carpeta_analisis(exp, cam, max_grupo)
+                r = propio.analizar(self.masks, exp, cam, destino, entrada_dir=self.entrada_dir,
+                                    progreso=paso, max_grupo=max_grupo)
+                self.trabajos[clave] = {"estado": "listo", "resumen": r, "t": time.time()}
+                self.anotar(f"análisis {exp}/{cam}{f' (grupos ≤ {max_grupo})' if max_grupo else ''}: "
+                            f"{r['trayectorias_analizadas']} trayectorias")
+            except Exception as e:
+                self.trabajos[clave] = {"estado": "error", "error": str(e), "t": time.time()}
+                self.anotar(f"análisis {exp}/{cam}: error ({e})")
+                traceback.print_exc()
+
+        threading.Thread(target=trabajar, daemon=True).start()
+
+    def carpeta_analisis(self, exp, cam, max_grupo=None):
+        d = self.analisis / exp / cam
+        return d / f"hasta_{max_grupo}" if max_grupo else d
+
+    def resumen_analisis(self, exp, cam, max_grupo=None):
+        t = self.trabajos.get((exp, cam) if not max_grupo else (exp, cam, max_grupo))
+        if t:
+            return t
+        r = self.carpeta_analisis(exp, cam, max_grupo) / "resumen.json"
+        if r.exists():
+            return {"estado": "listo", "resumen": json.loads(r.read_text(encoding="utf-8")), "t": r.stat().st_mtime}
+        return {"estado": "sin analizar"}
+
+    # ---------- panorama ----------
+    def experimentos(self):
+        exps = {}
+        for exp, cam, fecha, fotos, suf, completo in EV.ciclos(self.entrada_dir):
+            c = exps.setdefault(exp, {}).setdefault(cam, {"ciclos": 0, "incompletos": 0,
+                                                          "segmentados": 0, "ultima_fecha": None})
+            c["ciclos" if completo else "incompletos"] += 1
+            c["ultima_fecha"] = fecha
+        if self.masks.is_dir():
+            for exp_dir in self.masks.iterdir():
+                for cam_dir in exp_dir.glob("cam*") if exp_dir.is_dir() else []:
+                    c = exps.setdefault(exp_dir.name, {}).setdefault(
+                        cam_dir.name, {"ciclos": 0, "incompletos": 0, "segmentados": 0, "ultima_fecha": None})
+                    c["segmentados"] = sum(1 for _ in cam_dir.glob("*.npz"))
+        salida = []
+        for exp in sorted(exps, reverse=True):
+            meta = {}
+            mj = self.entrada_dir / exp / "experimento.json"
+            if mj.exists():
+                try:
+                    meta = json.loads(mj.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    pass
+            camaras = {}
+            for cam, c in sorted(exps[exp].items()):
+                a = self.resumen_analisis(exp, cam)
+                c["analisis"] = a.get("estado")
+                camaras[cam] = c
+            salida.append({"nombre": exp, "meta": meta, "camaras": camaras})
+        return salida
+
+    def estado(self):
+        seg = dict(self.seg)
+        seg["promedio_s"] = round(seg["segundos"] / seg["hechos"], 2) if seg["hechos"] else None
+        return {"dispositivo": self.disp, "ips": ips_locales(),
+                "entrada_dir": str(self.entrada_dir), "masks_dir": str(self.masks),
+                "analisis_dir": str(self.analisis),
+                "receptor": self.receptor.estado(), "codigo": self.token,
+                "segmentacion": seg, "experimentos": self.experimentos(),
+                "log": list(self.log)[-80:]}
+
+
+def crear_manejador(est):
+
+    class Manejador(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _enviar(self, codigo, cuerpo, tipo="application/json"):
+            if isinstance(cuerpo, (dict, list)):
+                cuerpo = json.dumps(cuerpo, ensure_ascii=False).encode()
+            self.send_response(codigo)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(cuerpo)
+
+        def _grupo(self, q):
+            """Variante del análisis: 0/ausente = todas las células; N = grupos de hasta N."""
+            try:
+                g = int(q.get("grupo", ["0"])[0] or 0)
+            except ValueError:
+                return None
+            return g if 0 < g <= 50 else None
+
+        def _exp_cam(self, q):
+            exp, cam = q.get("exp", [""])[0], q.get("cam", [""])[0]
+            if RE_NOMBRE.match(exp) and RE_CAM.match(cam):
+                return exp, cam
+            return None, None
+
+        def _foto(self, q):
+            exp, cam = self._exp_cam(q)
+            fecha = q.get("fecha", [""])[0]
+            return (exp, cam, fecha) if exp and RE_FECHA.match(fecha) else (None, None, None)
+
+        def _anotar_get(self, que, q):
+            exp = q.get("exp", [""])[0]
+            if not RE_NOMBRE.match(exp):
+                return self._enviar(400, {"error": "experimento inválido"})
+            if que == "muestra":
+                return self._enviar(200, {"fotos": ANOT.muestra(est.entrada_dir, exp),
+                                          "resumen": ANOT.resumen(est.masks, exp)})
+            if que == "zip":
+                datos = ANOT.zip_marcas(exp)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="marcas_{exp}.zip"')
+                self.send_header("Content-Length", str(len(datos)))
+                self.end_headers()
+                self.wfile.write(datos)
+                return
+            exp, cam, fecha = self._foto(q)
+            if not exp:
+                return self._enviar(400, {"error": "parámetros inválidos"})
+            try:
+                if que == "imagen":
+                    vista = q.get("vista", ["campo"])[0]
+                    vista = vista if vista in ANOT.VISTAS else "campo"
+                    return self._enviar(200, ANOT.imagen(est.entrada_dir, exp, cam, fecha, vista), "image/png")
+                if que == "cellpose":
+                    return self._enviar(200, {"poligonos": ANOT.de_cellpose(est.masks, exp, cam, fecha)})
+                if que == "cargar":
+                    return self._enviar(200, ANOT.cargar(exp, cam, fecha) or {"poligonos": []})
+            except (FileNotFoundError, OSError, ValueError) as e:
+                return self._enviar(404, {"error": str(e)})
+            return self._enviar(404, {"error": "no encontrado"})
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            q = parse_qs(url.query)
+            if url.path in ("/", "/index.html"):
+                return self._enviar(200, (ESTATICOS / "index.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path == "/anotar":
+                return self._enviar(200, (ESTATICOS / "anotar.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path.startswith("/api/anotar/"):
+                return self._anotar_get(url.path.rsplit("/", 1)[1], q)
+            if url.path == "/api/estado":
+                return self._enviar(200, est.estado())
+            if url.path == "/api/imagen":
+                exp, cam = self._exp_cam(q)
+                tipo = q.get("tipo", [""])[0]
+                if not exp or tipo not in IMAGENES:
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                base, nombre = IMAGENES[tipo]
+                if base == "masks":
+                    ruta = est.masks / exp / cam / nombre
+                else:
+                    ruta = est.carpeta_analisis(exp, cam, self._grupo(q)) / nombre
+                if not ruta.is_file():
+                    return self._enviar(404, {"error": "todavía no hay imagen"})
+                return self._enviar(200, ruta.read_bytes(), "image/png")
+            if url.path == "/api/serie":
+                exp, cam = self._exp_cam(q)
+                if not exp:
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                reg = est.masks / exp / "segmentacion.csv"
+                filas = []
+                if reg.exists():
+                    with open(reg, encoding="utf-8") as f:
+                        for r in csv.DictReader(f):
+                            if r["camara"] == cam:
+                                filas.append({"fecha": r["fecha"], "celulas": int(r["celulas"]),
+                                              "segundos": float(r["segundos"])})
+                return self._enviar(200, {"filas": filas})
+            if url.path == "/api/analisis":
+                exp, cam = self._exp_cam(q)
+                if not exp:
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                g = self._grupo(q)
+                a = dict(est.resumen_analisis(exp, cam, g))
+                pc = est.carpeta_analisis(exp, cam, g) / "por_celula.csv"
+                if a.get("estado") == "listo" and pc.exists():
+                    with open(pc, encoding="utf-8") as f:
+                        filas = list(csv.DictReader(f))
+                    filas.sort(key=lambda r: -float(r["duracion_min"]))
+                    a["celulas"] = filas[:100]
+                return self._enviar(200, a)
+            return self._enviar(404, {"error": "no encontrado"})
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", "0") or 0)
+            try:
+                datos = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                return self._enviar(400, {"error": "JSON inválido"})
+            ruta = urlparse(self.path).path
+            if ruta == "/api/receptor":
+                if datos.get("accion") == "nuevo_codigo":
+                    if est.receptor.activo():
+                        return self._enviar(400, {"error": "Detén la recepción antes de cambiar el código"})
+                    est.token = codigo_nuevo()
+                    guardar_codigo(est.ruta_codigo, est.token)
+                    est.anotar("código de emparejamiento nuevo: hay que escribirlo otra vez en la Pi")
+                    return self._enviar(200, {"codigo": est.token})
+                if datos.get("accion") == "iniciar":
+                    try:
+                        est.receptor.iniciar(est.entrada_dir, est.token, int(datos.get("puerto") or 8765),
+                                             info_extra={"gpu": est.disp.get("nombre", "")})
+                    except OSError as e:
+                        return self._enviar(400, {"error": f"no se pudo abrir el puerto: {e}"})
+                    est.anotar(f"recepción activa en el puerto {est.receptor.puerto}; "
+                               f"código para la Pi: {est.token}")
+                    if est.receptor.aviso_descubrimiento:
+                        est.anotar(est.receptor.aviso_descubrimiento)
+                else:
+                    est.receptor.detener()
+                    est.anotar("recepción detenida")
+                return self._enviar(200, est.receptor.estado())
+            if ruta == "/api/segmentacion":
+                if datos.get("accion") == "iniciar":
+                    op = {}
+                    if datos.get("entrada") in EV.ENTRADAS:
+                        op["entrada"] = datos["entrada"]
+                    for k, tipo, lo, hi in (("reducir", int, 1, 8), ("flow_threshold", float, 0, 3),
+                                            ("cellprob_threshold", float, -6, 6)):
+                        if k in datos:
+                            try:
+                                op[k] = min(hi, max(lo, tipo(datos[k])))
+                            except (TypeError, ValueError):
+                                pass
+                    est.iniciar_segmentacion(op)
+                else:
+                    est.detener_segmentacion()
+                return self._enviar(200, est.seg)
+            if ruta == "/api/analizar":
+                exp, cam = datos.get("exp", ""), datos.get("cam", "")
+                if not (RE_NOMBRE.match(exp) and RE_CAM.match(cam)):
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                try:
+                    max_grupo = int(datos.get("max_grupo") or 0) or None
+                except (TypeError, ValueError):
+                    return self._enviar(400, {"error": "max_grupo inválido"})
+                est.analizar(exp, cam, max_grupo)
+                return self._enviar(200, {"estado": "corriendo"})
+            if ruta == "/api/anotar/guardar":
+                q = {k: [str(datos.get(k, ""))] for k in ("exp", "cam", "fecha")}
+                exp, cam, fecha = self._foto(q)
+                pol = datos.get("poligonos")
+                if not exp or not isinstance(pol, list):
+                    return self._enviar(400, {"error": "parámetros inválidos"})
+                try:
+                    c = ANOT.guardar(est.entrada_dir, est.masks, exp, cam, fecha, pol,
+                                     bool(datos.get("partio_de_cellpose")))
+                except (FileNotFoundError, OSError, ValueError) as e:
+                    return self._enviar(400, {"error": str(e)})
+                est.anotar(f"contornos a mano: {exp}/{cam}/{fecha} ({len(pol)} células)")
+                return self._enviar(200, {"comparacion": c, "resumen": ANOT.resumen(est.masks, exp)})
+            if ruta == "/api/anotar/otra":
+                exp = str(datos.get("exp", ""))
+                if not RE_NOMBRE.match(exp):
+                    return self._enviar(400, {"error": "experimento inválido"})
+                return self._enviar(200, {"fotos": ANOT.muestra(est.entrada_dir, exp, otra=True)})
+            if ruta == "/api/importar":
+                try:
+                    r = IMP.importar(str(datos.get("ruta", "")), est.entrada_dir,
+                                     str(datos.get("nombre") or "").strip() or None)
+                except ValueError as e:
+                    return self._enviar(400, {"error": str(e)})
+                est.anotar(f"fotos de {datos.get('ruta')}: {r['ciclos']} ciclos "
+                           f"({r['nuevos']} archivos nuevos) en {r['experimento']}")
+                # paquete para marcar a mano (38_paquete_anotar.py): trae las
+                # máscaras de Cellpose y la lista de fotos
+                n = ANOT.instalar_paquete(Path(str(datos.get("ruta", ""))).expanduser(),
+                                          r["experimento"], est.masks)
+                if n:
+                    est.anotar(f"paquete para marcar a mano: {n} máscaras de Cellpose; "
+                               f"abrir «Contornos a mano» en {r['experimento']}")
+                return self._enviar(200, r)
+            if ruta == "/api/elegir_carpeta":
+                # Abre una ventana en ESTA PC: solo si la página se usa desde aquí.
+                if self.client_address[0] not in ("127.0.0.1", "::1"):
+                    return self._enviar(403, {"error": "El selector solo funciona desde esta PC; escribe la ruta"})
+                try:
+                    return self._enviar(200, {"ruta": elegir_carpeta(datos.get("inicial"))})
+                except (OSError, subprocess.SubprocessError) as e:
+                    return self._enviar(400, {"error": f"No se pudo abrir el selector ({e}); escribe la ruta"})
+            if ruta == "/api/carpeta":
+                if est.receptor.activo() or est.seg["estado"] != "detenido":
+                    return self._enviar(400, {"error": "Detén la recepción y la segmentación antes de cambiar de carpeta"})
+                p = Path(str(datos.get("ruta", ""))).expanduser()
+                if not p.is_dir():
+                    return self._enviar(400, {"error": f"No existe la carpeta {p}"})
+                est.entrada_dir = p.resolve()
+                est.anotar(f"carpeta de entrada: {est.entrada_dir}")
+                return self._enviar(200, {"entrada_dir": str(est.entrada_dir)})
+            return self._enviar(404, {"error": "no encontrado"})
+
+    return Manejador
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # 8770 y no 8080: el 8080 lo usan muchos programas (p. ej. el servidor de
+    # libros de Calibre). Queda junto al receptor (8765/tcp, 8766/udp).
+    ap.add_argument("--puerto", type=int, default=8770, help="Puerto de la interfaz")
+    ap.add_argument("--entrada-dir", type=Path, default=ROOT / "datasets" / "microscopio_propio")
+    ap.add_argument("--salida-dir", type=Path, default=None,
+                    help="Carpeta para máscaras y resultados (por defecto ~/microscopio_cache)")
+    ap.add_argument("--publico", action="store_true",
+                    help="Aceptar conexiones de otras computadoras de la red (por defecto solo esta PC)")
+    ap.add_argument("--no-abrir", action="store_true", help="No abrir el navegador")
+    args = ap.parse_args()
+    args.entrada_dir.mkdir(parents=True, exist_ok=True)
+    est = Estado(args.entrada_dir, args.salida_dir)
+    host = "0.0.0.0" if args.publico else "127.0.0.1"
+    srv = ThreadingHTTPServer((host, args.puerto), crear_manejador(est))
+    url = f"http://127.0.0.1:{args.puerto}"
+    est.anotar(f"interfaz en {url}  (GPU: {est.disp['backend']} {est.disp['nombre']})")
+    if not args.no_abrir:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    est.detener_segmentacion()
+    est.receptor.detener()
+
+
+if __name__ == "__main__":
+    main()

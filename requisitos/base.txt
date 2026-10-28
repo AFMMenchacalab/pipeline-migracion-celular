@@ -1,0 +1,22 @@
+# Dependencias del pipeline SIN PyTorch: instalar.sh / instalar.ps1 instalan
+# primero torch y torchvision con la variante correcta para la GPU (CUDA,
+# ROCm o CPU) y después esto. Cellpose y laptrack van fijos a la versión
+# validada (cambian los resultados); el resto con cotas mínimas para que
+# instale en Python 3.10–3.14, en Linux y en Windows.
+# El entorno exacto de la PC de desarrollo (ROCm) está en ../requirements.txt.
+cellpose==4.2.1.1
+laptrack==0.17.1
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+scikit-image>=0.22
+scikit-learn>=1.3
+statsmodels>=0.14
+matplotlib>=3.8
+seaborn>=0.13
+opencv-python-headless>=4.9
+tifffile>=2024.1
+imagecodecs>=2024.1
+roifile>=2024.1
+tqdm>=4.66
+natsort>=8.4

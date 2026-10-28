@@ -197,6 +197,50 @@ Etiquetas jerárquicas (12 → 12.1 / 12.2), árboles y video.
 - Probado con un timelapse simulado y un corte de red: 14/14 archivos
   recibidos, reenvío sin duplicados, ~1.6 s por ciclo a 1024×1024.
 
+## 4e. Interfaz gráfica e instalación en otras PCs (rama experimental/interfaz-cuda)
+
+- `33_interfaz.py` + `interfaz/index.html`: página web local que junta
+  recepción, segmentación en vivo (con la última imagen segmentada a la
+  vista) y tracking con estadística por experimento. **Por qué web local y
+  no ventana de escritorio:** funciona igual en Linux y Windows sin
+  dependencias gráficas, se puede mirar desde otra PC y usa solo la
+  biblioteca estándar.
+- `lib/en_vivo.py`, `lib/receptor.py`: la lógica de 31/32 pasó a módulos
+  para que consola e interfaz usen el mismo código.
+- `lib/propio.py`: tracking con los parámetros de la variante validada
+  (`dist_tam`) y las mismas medidas del reporte; el tiempo sale de la fecha
+  de cada ciclo, así un ciclo faltante deja un hueco en vez de juntar
+  tiempos. Probado con 24 cuadros de la película BF 1: 233 trayectorias,
+  rapidez 0.70 µm/min, EAD₁ 0.979, σ 1.85 µm (coherente con el reporte).
+- **CUDA:** el código ya era el mismo (PyTorch expone ROCm y CUDA con
+  `torch.cuda`); lo que cambia es el paquete. `instalar.sh`/`instalar.ps1`
+  eligen CUDA 13.0 o 12.6 según el driver NVIDIA, ROCm 7.2 en AMD o CPU.
+  `requisitos/base.txt` fija cellpose y laptrack (cambian resultados) y deja
+  cotas mínimas en el resto para Python 3.10–3.14. Sin GPU cae a CPU.
+- `verificar_instalacion.py`: segmenta una imagen sintética con 12 células
+  y prueba el tracking; el instalador lo corre al final.
+
+## 4f. Fase cuantitativa desde las 4 fotos DPC (rama experimental/interfaz-cuda)
+
+- `lib/fase_dpc.py` + `34_fase_dpc.py`: método de Tian y Waller (2015):
+  funciones de transferencia de objeto débil con la geometría real (matriz
+  Waveshare ESP32-S3-Matrix 8×8, paso 2.70 mm medido sobre el dibujo del
+  fabricante; objetivo 20×/0.40 160/0.17; 0.2159 µm/px; verde 0.525 µm) y
+  deconvolución de Tikhonov de los dos ejes. La orientación de la matriz
+  respecto de la cámara se calibra sola (espejo x/y) eligiendo la que da
+  células como montañas positivas.
+- **Hallazgo de la simulación (condiciona el montaje):** con iluminación
+  coherente, un LED solo transmite la fase de estructuras del tamaño de una
+  célula si su ángulo está cerca del límite del objetivo (NA ≈ 0.40). Con la
+  matriz a 35 mm la reconstrucción no funciona (correlación 0.1); a ~23 mm
+  sí (0.67). **Con un difusor** sobre la matriz funciona en 20–26 mm
+  (correlación 0.92–0.94). La fase de estructuras grandes sale ~25%
+  subestimada (frecuencias bajas perdidas): útil para segmentar y comparar
+  con el mismo montaje, no como masa seca absoluta sin calibrar.
+- La segmentación en vivo y la interfaz aceptan la entrada `fase` una vez
+  calibrado el montaje. Prueba con 12 células sintéticas: orientación
+  detectada correctamente y 12/12 células segmentadas.
+
 ## 5. Rendimiento
 
 - GPU: fp16 más lectura/escritura en hilos. La segmentación BF pasa de
